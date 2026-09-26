@@ -1,0 +1,21 @@
+# Secrets
+.env
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Runtime data
+data/harness.db*
+
+# Frontend
+node_modules/
+frontend/dist/
+frontend/.angular/
+
+# OS / editors / local tooling
+.DS_Store
+.idea/
+.claude/

@@ -1,0 +1,52 @@
+# How the harness behaves. Deployment settings (endpoints, keys) live in .env.
+# Unknown keys fail at startup.
+
+limits:
+  max_steps: 8              # LLM turns per run
+  max_tool_calls: 12        # tool executions per run
+  max_run_seconds: 120      # per segment (start or resume); time waiting for approval is not counted
+  max_repeat_calls: 2       # same tool + same args allowed this many times
+  max_repairs: 2            # consecutive malformed LLM replies before the run fails
+  max_calls_per_reply: 3    # tool calls allowed in one LLM reply
+  max_incidents_per_run: 1
+
+llm:
+  temperature: 0
+  timeout_s: 30
+  max_attempts: 3           # transient API errors only
+
+retry:                      # exponential backoff with full jitter
+  base_delay_s: 0.2
+  max_delay_s: 2.0
+
+tools:
+  search_knowledge_base: {timeout_s: 5, max_attempts: 3}
+  get_service_status:    {timeout_s: 2, max_attempts: 3}
+  create_incident:       {timeout_s: 5, max_attempts: 2}
+
+kb:
+  collection: ops_kb
+  top_k_dense: 10
+  top_k_bm25: 10
+  rrf_k: 60
+  top_n: 3
+
+bm25:
+  k1: 1.2
+  b: 0.75
+  avg_doc_len: 120
+
+approval:
+  ttl_s: 900                # pending approvals expire (auto-reject) after this
+  sweep_s: 30
+
+output:
+  max_tool_result_chars: 4000
+
+eval:
+  golden_set: eval/kb_golden.jsonl
+  online_default: true
+  relevancy_strictness: 1
+  thresholds:
+    faithfulness: 0.7
+    context_relevance: 0.5
