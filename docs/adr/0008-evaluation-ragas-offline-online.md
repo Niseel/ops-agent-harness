@@ -1,6 +1,6 @@
 # 0008. Evaluation: RAGAS offline (golden set) and online (per run)
 
-Status: Accepted · Date: 2026-09-26
+Status: Accepted · Date: 2026-09-26 · Golden set moved to `evals/kb_golden.jsonl`, see [0018](0018-adopt-ai-sdlc-workflow.md)
 
 ## Context
 

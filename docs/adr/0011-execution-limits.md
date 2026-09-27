@@ -1,6 +1,6 @@
 # 0011. Execution limits in layers
 
-Status: Accepted · Date: 2026-09-26
+Status: Accepted · Date: 2026-09-26 · `max_repairs` means repairs allowed: that many malformed replies in a row are repaired, the next one fails the run ([spec AC-7](../../specs/ops-agent-harness.md#acceptance-criteria))
 
 ## Context
 

@@ -1,0 +1,1162 @@
+{
+  "info": {
+    "_postman_id": "5f0c0d4e-6a5b-4c1e-9d0a-0a11ce000001",
+    "name": "Ops Agent Harness",
+    "description": "Every route of the API (contract: specs/ops-agent-harness.md, API). Start with folder 1: it creates a run, approves the incident and checks the trace. Variables are set by the requests; only baseUrl (and approverToken when APPROVER_TOKEN is set) needs a value. To run everything with newman, add --timeout-request 30000; folder 1 alone is the acceptance check.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8000"
+    },
+    {
+      "key": "approverToken",
+      "value": ""
+    },
+    {
+      "key": "runId",
+      "value": ""
+    },
+    {
+      "key": "approvalId",
+      "value": ""
+    },
+    {
+      "key": "pollLeft",
+      "value": "40"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Demo flow: create → approve → trace",
+      "description": "Run this folder in order (Postman Runner or `npx newman run docs/postman_collection.json --folder \"1. Demo flow: create → approve → trace\"`). It needs the API running with the fake LLM and nothing else.",
+      "item": [
+        {
+          "name": "Create run that asks for an incident",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/runs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "runs"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"objective\": \"payments-api is returning 5xx errors. Investigate and open an incident if needed.\",\n  \"llm\": \"fake\",\n  \"options\": {\n    \"evaluate\": false\n  }\n}"
+            },
+            "description": "Online evaluation is off so that the trace ends with the done event (evaluation events are written after done)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('202 Accepted', function () { pm.response.to.have.status(202); });",
+                  "const body = pm.response.json();",
+                  "pm.test('returns run_id', function () { pm.expect(body.run_id).to.be.a('string'); });",
+                  "pm.collectionVariables.set('runId', body.run_id);",
+                  "pm.collectionVariables.set('pollLeft', 40);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Wait until the run needs approval",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/runs/{{runId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "runs",
+                "{{runId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "setTimeout(function () {}, 300);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const run = pm.response.json();",
+                  "const left = Number(pm.collectionVariables.get('pollLeft'));",
+                  "if (!(run.status === 'awaiting_approval') && left > 0) {",
+                  "  pm.collectionVariables.set('pollLeft', left - 1);",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "} else {",
+                  "  pm.collectionVariables.set('pollLeft', 40);",
+                  "  pm.test('run is awaiting_approval', function () { pm.expect(run.status === 'awaiting_approval').to.be.true; });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Find the pending approval",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/approvals?status=pending",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "approvals"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "pending"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const mine = pm.response.json().filter(a => a.run_id === pm.collectionVariables.get('runId'));",
+                  "pm.test('one pending approval for create_incident', function () {",
+                  "  pm.expect(mine).to.have.lengthOf(1);",
+                  "  pm.expect(mine[0].tool).to.eql('create_incident');",
+                  "});",
+                  "pm.collectionVariables.set('approvalId', mine[0].id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "No incident before the decision",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/incidents",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "incidents"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const mine = pm.response.json().filter(i => i.run_id === pm.collectionVariables.get('runId'));",
+                  "pm.test('no incident yet', function () { pm.expect(mine).to.have.lengthOf(0); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Approve",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Approver-Token",
+                "value": "{{approverToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/runs/{{runId}}/approvals/{{approvalId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "runs",
+                "{{runId}}",
+                "approvals",
+                "{{approvalId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"decision\": \"approve\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', function () { pm.response.to.have.status(200); });",
+                  "pm.test('approval is approved', function () { pm.expect(pm.response.json().status).to.eql('approved'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Wait until the run completes",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/runs/{{runId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "runs",
+                "{{runId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "setTimeout(function () {}, 300);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const run = pm.response.json();",
+                  "const left = Number(pm.collectionVariables.get('pollLeft'));",
+                  "if (!(run.status === 'completed') && left > 0) {",
+                  "  pm.collectionVariables.set('pollLeft', left - 1);",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "} else {",
+                  "  pm.collectionVariables.set('pollLeft', 40);",
+                  "  pm.test('run is completed', function () { pm.expect(run.status === 'completed').to.be.true; });",
+                  "  pm.test('usage recorded', function () { pm.expect(run.usage).to.have.keys('prompt_tokens', 'completion_tokens'); });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Exactly one incident",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/incidents",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "incidents"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const mine = pm.response.json().filter(i => i.run_id === pm.collectionVariables.get('runId'));",
+                  "pm.test('one incident for this run', function () { pm.expect(mine).to.have.lengthOf(1); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Trace",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/runs/{{runId}}/trace",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "runs",
+                "{{runId}}",
+                "trace"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const events = pm.response.json().events;",
+                  "pm.test('events in seq order', function () {",
+                  "  const seqs = events.map(e => e.seq);",
+                  "  pm.expect(seqs).to.eql([...seqs].sort((a, b) => a - b));",
+                  "});",
+                  "pm.test('ends with one done event', function () {",
+                  "  pm.expect(events.filter(e => e.kind === 'done')).to.have.lengthOf(1);",
+                  "  pm.expect(events[events.length - 1].kind).to.eql('done');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2. Runs",
+      "description": "Start, inspect, cancel and resume runs.",
+      "item": [
+        {
+          "name": "Create run (investigate only)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/runs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "runs"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"objective\": \"Check the status of auth-service and summarise it.\",\n  \"llm\": \"fake\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('202 Accepted', function () { pm.response.to.have.status(202); });",
+                  "const body = pm.response.json();",
+                  "pm.test('returns run_id', function () { pm.expect(body.run_id).to.be.a('string'); });",
+                  "pm.collectionVariables.set('runId', body.run_id);",
+                  "pm.collectionVariables.set('pollLeft', 40);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List runs",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/runs?limit=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "runs"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get run",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/runs/{{runId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "runs",
+                "{{runId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Live events (SSE)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "text/event-stream"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/runs/{{runId}}/events",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "runs",
+                "{{runId}}",
+                "events"
+              ]
+            },
+            "description": "Server-Sent Events: stored events first, then live ones; each event id is its seq. Send header Last-Event-ID to resume. Postman shows the stream; newman is not meant for it."
+          },
+          "event": []
+        },
+        {
+          "name": "Trace",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/runs/{{runId}}/trace",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "runs",
+                "{{runId}}",
+                "trace"
+              ]
+            }
+          },
+          "event": []
+        },
+        {
+          "name": "Cancel",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/runs/{{runId}}/cancel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "runs",
+                "{{runId}}",
+                "cancel"
+              ]
+            },
+            "description": "200 for a running, paused or interrupted run (pending approvals become cancelled); 409 when the run is already final."
+          },
+          "event": []
+        },
+        {
+          "name": "Resume an interrupted run",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/runs/{{runId}}/resume",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "runs",
+                "{{runId}}",
+                "resume"
+              ]
+            },
+            "description": "202 for a run in status interrupted (after a restart); 409 otherwise."
+          },
+          "event": []
+        },
+        {
+          "name": "Create run with a real LLM",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/runs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "runs"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"objective\": \"payments-api is returning 5xx errors. Investigate and open an incident if needed.\",\n  \"llm\": \"openai\",\n  \"options\": {\n    \"limits\": {\n      \"max_steps\": 6\n    },\n    \"evaluate\": true\n  }\n}"
+            },
+            "description": "Needs LLM_* pointing at a model that supports tool calling. Last in this folder on purpose: a real model may pause the run for approval, so no request here streams it."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('202 Accepted', function () { pm.response.to.have.status(202); });",
+                  "const body = pm.response.json();",
+                  "pm.test('returns run_id', function () { pm.expect(body.run_id).to.be.a('string'); });",
+                  "pm.collectionVariables.set('runId', body.run_id);",
+                  "pm.collectionVariables.set('pollLeft', 40);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3. Failure and limit demos",
+      "description": "Each request starts a run that shows one harness behaviour. Needs ALLOW_FAULT_INJECTION=true. Watch the result with Get run or Live events.",
+      "item": [
+        {
+          "name": "Tool timeout twice, then success (retry)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/runs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "runs"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"objective\": \"payments-api is returning 5xx errors, investigate.\",\n  \"llm\": \"fake\",\n  \"options\": {\n    \"faults\": {\n      \"get_service_status\": {\n        \"mode\": \"timeout\",\n        \"times\": 2\n      }\n    }\n  }\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('202 Accepted', function () { pm.response.to.have.status(202); });",
+                  "const body = pm.response.json();",
+                  "pm.test('returns run_id', function () { pm.expect(body.run_id).to.be.a('string'); });",
+                  "pm.collectionVariables.set('runId', body.run_id);",
+                  "pm.collectionVariables.set('pollLeft', 40);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Malformed LLM reply once (repair)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/runs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "runs"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"objective\": \"payments-api is returning 5xx errors, investigate.\",\n  \"llm\": \"fake\",\n  \"options\": {\n    \"faults\": {\n      \"llm\": {\n        \"mode\": \"malformed\",\n        \"times\": 1\n      }\n    }\n  }\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('202 Accepted', function () { pm.response.to.have.status(202); });",
+                  "const body = pm.response.json();",
+                  "pm.test('returns run_id', function () { pm.expect(body.run_id).to.be.a('string'); });",
+                  "pm.collectionVariables.set('runId', body.run_id);",
+                  "pm.collectionVariables.set('pollLeft', 40);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Step limit (max_steps = 2)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/runs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "runs"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"objective\": \"payments-api is returning 5xx errors, investigate.\",\n  \"llm\": \"fake\",\n  \"options\": {\n    \"limits\": {\n      \"max_steps\": 2\n    }\n  }\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('202 Accepted', function () { pm.response.to.have.status(202); });",
+                  "const body = pm.response.json();",
+                  "pm.test('returns run_id', function () { pm.expect(body.run_id).to.be.a('string'); });",
+                  "pm.collectionVariables.set('runId', body.run_id);",
+                  "pm.collectionVariables.set('pollLeft', 40);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Embeddings down (sparse_only search)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/runs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "runs"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"objective\": \"payments-api is returning 5xx errors, investigate.\",\n  \"llm\": \"fake\",\n  \"options\": {\n    \"faults\": {\n      \"embeddings\": {\n        \"mode\": \"error\",\n        \"times\": 1\n      }\n    }\n  }\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('202 Accepted', function () { pm.response.to.have.status(202); });",
+                  "const body = pm.response.json();",
+                  "pm.test('returns run_id', function () { pm.expect(body.run_id).to.be.a('string'); });",
+                  "pm.collectionVariables.set('runId', body.run_id);",
+                  "pm.collectionVariables.set('pollLeft', 40);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Incident times out after commit (no duplicate)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/runs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "runs"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"objective\": \"orders-db is down. Investigate and open an incident if needed.\",\n  \"llm\": \"fake\",\n  \"options\": {\n    \"faults\": {\n      \"create_incident\": {\n        \"mode\": \"timeout_after_commit\",\n        \"times\": 1\n      }\n    }\n  }\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('202 Accepted', function () { pm.response.to.have.status(202); });",
+                  "const body = pm.response.json();",
+                  "pm.test('returns run_id', function () { pm.expect(body.run_id).to.be.a('string'); });",
+                  "pm.collectionVariables.set('runId', body.run_id);",
+                  "pm.collectionVariables.set('pollLeft', 40);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Invalid body is rejected (422)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/runs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "runs"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"objective\": \"\",\n  \"unknown_field\": true\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('422 Unprocessable', function () { pm.response.to.have.status(422); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "4. Approvals",
+      "description": "Decisions on a pending create_incident call. Set approvalId first (List pending approvals). If APPROVER_TOKEN is set on the server, set the approverToken variable.",
+      "item": [
+        {
+          "name": "List pending approvals",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/approvals?status=pending",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "approvals"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "pending"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const items = pm.response.json();",
+                  "if (items.length) { pm.collectionVariables.set('approvalId', items[0].id); pm.collectionVariables.set('runId', items[0].run_id); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Approve",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Approver-Token",
+                "value": "{{approverToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/runs/{{runId}}/approvals/{{approvalId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "runs",
+                "{{runId}}",
+                "approvals",
+                "{{approvalId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"decision\": \"approve\"\n}"
+            }
+          },
+          "event": []
+        },
+        {
+          "name": "Reject with a reason",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Approver-Token",
+                "value": "{{approverToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/runs/{{runId}}/approvals/{{approvalId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "runs",
+                "{{runId}}",
+                "approvals",
+                "{{approvalId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"decision\": \"reject\",\n  \"reason\": \"Known issue, already tracked in INC-1234.\"\n}"
+            }
+          },
+          "event": []
+        },
+        {
+          "name": "Edit, then run",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Approver-Token",
+                "value": "{{approverToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/runs/{{runId}}/approvals/{{approvalId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "runs",
+                "{{runId}}",
+                "approvals",
+                "{{approvalId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"decision\": \"edit\",\n  \"args\": {\n    \"title\": \"payments-api 5xx error spike\",\n    \"description\": \"Error rate above 5% since 10:40 UTC. Runbook followed, rollback pending.\",\n    \"severity\": \"SEV2\"\n  }\n}"
+            },
+            "description": "args replace the proposed arguments completely and are validated (422 if invalid)."
+          },
+          "event": []
+        },
+        {
+          "name": "Decide twice (409)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Approver-Token",
+                "value": "{{approverToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/runs/{{runId}}/approvals/{{approvalId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "runs",
+                "{{runId}}",
+                "approvals",
+                "{{approvalId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"decision\": \"approve\"\n}"
+            },
+            "description": "Send after any decision above: a second decision returns 409."
+          },
+          "event": []
+        }
+      ]
+    },
+    {
+      "name": "5. Evaluation",
+      "description": "Knowledge base retrieval quality on the golden set.",
+      "item": [
+        {
+          "name": "Run golden-set evaluation (SSE)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "text/event-stream"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/eval/kb",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "eval",
+                "kb"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"modes\": [\n    \"hybrid\",\n    \"dense\",\n    \"sparse\"\n  ]\n}"
+            },
+            "description": "Streams progress, then the report. 503 when the knowledge base is not available."
+          },
+          "event": []
+        },
+        {
+          "name": "Latest report",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/eval/kb/latest",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "eval",
+                "kb",
+                "latest"
+              ]
+            }
+          },
+          "event": []
+        }
+      ]
+    },
+    {
+      "name": "6. Meta",
+      "description": "Health and the mock systems.",
+      "item": [
+        {
+          "name": "Health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "health"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Tools",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/tools",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tools"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const names = pm.response.json().map(t => t.name).sort();",
+                  "pm.test('three tools', function () {",
+                  "  pm.expect(names).to.eql(['create_incident', 'get_service_status', 'search_knowledge_base']);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Incidents (mock system)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/incidents",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "incidents"
+              ]
+            }
+          },
+          "event": []
+        }
+      ]
+    }
+  ]
+}

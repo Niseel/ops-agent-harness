@@ -4,23 +4,25 @@ One file per decision. Each record says what problem we had, what we considered,
 
 | # | Decision | Status |
 |---|---|---|
+| [0000](0000-record-architecture-decisions.md) | Record architecture decisions | Accepted |
 | [0001](0001-backend-python-fastapi.md) | Backend: Python 3.12 + FastAPI + uv | Accepted |
 | [0002](0002-agent-loop-langgraph-custom-nodes.md) | Agent loop: LangGraph engine, our own nodes | Accepted |
-| [0003](0003-llm-openai-compatible-with-fake.md) | LLM: raw OpenAI SDK, any OpenAI-compatible provider, fake by default | Accepted |
+| [0003](0003-llm-openai-compatible-with-fake.md) | LLM: raw OpenAI SDK, any OpenAI-compatible provider, fake by default | Accepted (FakePlanner incident rule changed) |
 | [0004](0004-state-and-database-sqlite.md) | State and database design: SQLite | Accepted |
 | [0005](0005-kb-search-hybrid-rag.md) | Knowledge base search: hybrid RAG (dense + BM25, RRF) | Accepted |
 | [0006](0006-vector-store-qdrant-no-rerank.md) | Vector store: Qdrant server, no reranker | Accepted |
 | [0007](0007-embeddings-api-sparse-fallback.md) | Embeddings via API, BM25-only fallback | Accepted |
-| [0008](0008-evaluation-ragas-offline-online.md) | Evaluation: RAGAS offline (golden set) and online (per run) | Accepted |
+| [0008](0008-evaluation-ragas-offline-online.md) | Evaluation: RAGAS offline (golden set) and online (per run) | Accepted (golden set path updated by 0018) |
 | [0009](0009-human-approval-interrupt.md) | Human approval before `create_incident` | Accepted |
-| [0010](0010-failure-handling-envelope-retry-repair.md) | Failure handling: result envelope, selective retry, reply repair | Accepted |
-| [0011](0011-execution-limits.md) | Execution limits in layers | Accepted |
-| [0012](0012-fault-injection-per-run.md) | Fault injection per run | Accepted |
+| [0010](0010-failure-handling-envelope-retry-repair.md) | Failure handling: result envelope, selective retry, reply repair | Accepted (`max_repairs` clarified) |
+| [0011](0011-execution-limits.md) | Execution limits in layers | Accepted (`max_repairs` clarified) |
+| [0012](0012-fault-injection-per-run.md) | Fault injection per run | Accepted (`embeddings` fault added) |
 | [0013](0013-recovery-interrupted-runs.md) | Recovery: interrupted runs resume by hand | Accepted |
 | [0014](0014-observability-trace-events.md) | Observability: trace events + JSON logs | Accepted |
 | [0015](0015-ui-run-console-not-chat.md) | UI concept: run console with approval inbox, not a chat | Accepted |
 | [0016](0016-ui-angular.md) | UI tech: Angular | Accepted |
-| [0017](0017-docs-postman-ci.md) | Docs in repo, Postman collection, CI | Accepted |
+| [0017](0017-docs-postman-ci.md) | Docs in repo, Postman collection, CI | Accepted (plan doc replaced by 0018) |
+| [0018](0018-adopt-ai-sdlc-workflow.md) | Adopt the AI-SDLC workflow | Accepted (`/feature` adapted) |
 
 ## Format
 

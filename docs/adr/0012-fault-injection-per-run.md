@@ -1,6 +1,6 @@
 # 0012. Fault injection per run
 
-Status: Accepted · Date: 2026-09-26
+Status: Accepted · Date: 2026-09-26 · Added 2026-09-27: `embeddings` fault key (mode `error`) to force `sparse_only` search ([spec, Fault injection](../../specs/ops-agent-harness.md#fault-injection))
 
 ## Context
 
