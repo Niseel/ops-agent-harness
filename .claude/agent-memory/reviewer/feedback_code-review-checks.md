@@ -45,3 +45,10 @@ Found in the M1 owner timestamp fix review (2026-09-27):
 
 **Why:** the tester runs the listed tests; these gaps pass them.
 **How to apply:** on every review touching logging, SQL or the tracer, run the probes above in the scratchpad. See also [[spec-adr-config-drift-hotspots]].
+
+Found in the M2 T1 review (2026-09-27), carry into T2/T3/M3:
+
+- `ingest` checks the embedder only by "did it raise": a reply with fewer vectors than chunks raises IndexError after `delete_collection`/`create_collection`, leaving an empty collection that `status()` calls `hybrid`. Probe any rebuild path with a short or empty embedding reply.
+- `content_hash` covers docs + embed model only (plan-pinned): a change to `cfg.bm25` or the tokenizer never reindexes, and M3 `cli ingest` has no force flag. Re-check when M3 adds the CLI.
+- Lifespan code catches every Exception and logs; a startup test that only checks "no rebuild" passes even when ingest failed. Ask for a caplog assert on the success line.
+- Vendor-note margin with the fake embedder (probe script: search each plain objective with limit=24): best rank 5 in sparse, 8 in hybrid. Re-probe if data/kb or the objectives list change.

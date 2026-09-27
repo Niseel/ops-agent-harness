@@ -241,8 +241,8 @@ SQLite file `DB_PATH` ([0004](../docs/adr/0004-state-and-database-sqlite.md)): L
 
 ([0005](../docs/adr/0005-kb-search-hybrid-rag.md), [0006](../docs/adr/0006-vector-store-qdrant-no-rerank.md), [0007](../docs/adr/0007-embeddings-api-sparse-fallback.md))
 
-- Ingest (at startup and `cli ingest`): split `data/kb/*.md` by `##` section; embed each chunk (`EMBED_*`), build BM25 sparse vectors; upsert one Qdrant point per chunk with vectors `dense` and `bm25` (`Modifier.IDF`) and payload `doc_id, title, section, text, content_hash, embed_model`. Skip when the hash of (documents + embedding model) is unchanged; rebuild the collection when it changed. If embeddings fail, index BM25 only. If Qdrant is down at startup, the API still starts, logs a warning and `/api/health` reports the knowledge base as unavailable.
-- Query: embed the query, run dense and BM25 search in parallel (`kb.top_k_dense`, `kb.top_k_bm25`), fuse with RRF (`kb.rrf_k`), return `kb.top_n`. If embedding fails, BM25 only and `mode = sparse_only`.
+- Ingest (at startup and `cli ingest`): split `data/kb/*.md` by `##` section; embed each chunk (`EMBED_*`), build BM25 sparse vectors; upsert one Qdrant point per chunk with vectors `dense` and `bm25` (`Modifier.IDF`) and payload `doc_id, title, section, text, content_hash, embed_model`. Skip when the hash of (documents + embedding model) is unchanged; rebuild the collection when it changed. A BM25-only index is never skipped, so the next ingest adds dense vectors once embeddings answer. If embeddings fail, index BM25 only. If Qdrant is down at startup, the API still starts, logs a warning and `/api/health` reports the knowledge base as unavailable.
+- Query: embed the query, run dense and BM25 search in parallel (`kb.top_k_dense`, `kb.top_k_bm25`), fuse with RRF (`kb.rrf_k`), return `kb.top_n`. If embedding fails, BM25 only and `mode = sparse_only`. A query embedding slower than `kb.embed_timeout_s` counts as failed.
 - An internal `mode` parameter (`hybrid`, `dense`, `sparse`) exists for evaluation. The LLM only sees `query`.
 - Sub-steps emit `stage` events with node `kb.embed`, `kb.dense`, `kb.bm25`, `kb.rrf` and their rankings.
 

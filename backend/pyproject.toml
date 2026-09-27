@@ -11,6 +11,7 @@ dependencies = [
     "openai>=3.19.2,<4",
     "langgraph>=1.2.12,<2",
     "langgraph-checkpoint-sqlite>=3.1.1,<4",
+    "qdrant-client>=1.19.1,<2",
 ]
 
 [dependency-groups]
@@ -22,6 +23,7 @@ package = false
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 pythonpath = ["."]
+markers = ["live: needs a real embedding endpoint or judge; skipped when it does not answer"]
 
 [tool.ruff]
 line-length = 120

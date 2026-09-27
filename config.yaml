@@ -30,6 +30,7 @@ kb:
   top_k_bm25: 10
   rrf_k: 60
   top_n: 3
+  embed_timeout_s: 2.0      # query embedding; slower counts as failed and the search runs sparse_only
 
 bm25:
   k1: 1.2

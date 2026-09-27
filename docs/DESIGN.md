@@ -90,7 +90,7 @@ A run that ends `failed`, `limit_exceeded` or `timed_out` stores one of these co
 | `internal_error` | `failed` | Any other exception; the details are only in the log |
 | `max_run_seconds` | `timed_out` | The segment ran longer than `max_run_seconds` |
 
-The knowledge base lives in Qdrant, collection `ops_kb`: one point per runbook section with a `dense` vector, a `bm25` sparse vector (IDF applied by Qdrant) and payload `doc_id, title, section, text, content_hash, embed_model` ([ADR 0006](adr/0006-vector-store-qdrant-no-rerank.md)).
+The knowledge base lives in Qdrant, collection `ops_kb`: one point per runbook section with a `dense` vector, a `bm25` sparse vector (IDF applied by Qdrant) and payload `doc_id, title, section, text, content_hash, embed_model` ([ADR 0006](adr/0006-vector-store-qdrant-no-rerank.md)). `content_hash` covers the documents and the embedding model; `embed_model` is null in a BM25-only index.
 
 ## 4. Safety controls
 

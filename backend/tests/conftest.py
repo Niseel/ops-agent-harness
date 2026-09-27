@@ -1,13 +1,20 @@
+import asyncio
 import logging
+import math
+import zlib
 from typing import Literal
 
 import pytest
 from pydantic import Field
+from qdrant_client import AsyncQdrantClient
 
 from app.config import Strict, cfg, settings
 from app.harness.runner import Runner
 from app.harness.store import Store
 from app.harness.tracer import Tracer
+from app.kb import qdrant, sparse
+from app.kb.ingest import ingest
+from app.llm.openai_compat import OpenAICompatEmbedder
 from app.tools import Tool, registry
 
 SECRET = "sk-test-secret-123"
@@ -126,3 +133,60 @@ def search(monkeypatch):
 def injected_search(monkeypatch):
     """The search double with a document that tells the model to open a SEV1."""
     monkeypatch.setitem(registry.TOOLS, "search_knowledge_base", _search_tool([*HITS[:1], INJECTED, HITS[1]]))
+
+
+# --- M2 T1: knowledge base on in-memory Qdrant ----------------------------------------------
+
+
+class FakeEmbedder:
+    """Hashed bag of words: dense ranking in tests is word overlap. Only `live` tests show real semantics."""
+
+    model = "fake-embed"
+    dims = 256
+
+    def __init__(self, fail: bool = False, delay: float = 0.0) -> None:
+        self.fail, self.delay, self.calls = fail, delay, 0
+
+    async def embed(self, texts: list[str]) -> list[list[float]]:
+        self.calls += 1
+        if self.delay:
+            await asyncio.sleep(self.delay)
+        if self.fail:
+            raise ConnectionError("embedding endpoint refused the connection")
+        return [self._vector(t) for t in texts]
+
+    def _vector(self, text: str) -> list[float]:
+        vector = [0.0] * self.dims
+        for token in sparse.tokens(text):
+            vector[zlib.crc32(token.encode()) % self.dims] += 1.0
+        norm = math.sqrt(sum(v * v for v in vector))
+        return [v / norm for v in vector] if norm else [1.0] + [0.0] * (self.dims - 1)
+
+
+@pytest.fixture(autouse=True)
+def no_real_kb(monkeypatch):
+    def refuse():
+        raise RuntimeError("no knowledge base in this test: use the kb fixture")
+
+    monkeypatch.setattr(qdrant, "get_kb", refuse)
+
+
+@pytest.fixture
+async def kb(monkeypatch):
+    """The fixture documents indexed in in-memory Qdrant with the fake embedder."""
+    knowledge_base = qdrant.KnowledgeBase(AsyncQdrantClient(location=":memory:"), FakeEmbedder())
+    await ingest(knowledge_base, settings.data_dir / "kb")
+    monkeypatch.setattr(qdrant, "get_kb", lambda: knowledge_base)
+    yield knowledge_base
+    await knowledge_base.client.close()
+
+
+@pytest.fixture
+async def live_embedder():
+    embedder = OpenAICompatEmbedder.from_settings()
+    try:
+        async with asyncio.timeout(5):
+            await embedder.embed(["ping"])
+    except Exception as exc:
+        pytest.skip(f"no embedding endpoint: {type(exc).__name__}")
+    return embedder

@@ -107,6 +107,7 @@ class KB(Strict):
     top_k_bm25: int = 10
     rrf_k: int = 60
     top_n: int = 3
+    embed_timeout_s: float = 2.0  # query embedding; slower counts as failed
 
 
 class BM25(Strict):
