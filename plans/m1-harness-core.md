@@ -1,6 +1,6 @@
 # Plan: M1 harness core   (from [specs/ops-agent-harness.md](../specs/ops-agent-harness.md))
 
-Status: approved (gate 1, 2026-09-27). Branch: `feat/m1-harness-core`. PR title: `feat: M1 harness core`.
+Status: done (gate 1 approved 2026-09-27; all six tasks committed 2026-09-27). Branch: `feat/m1-harness-core`. PR title: `feat: M1 harness core`.
 
 The harness package end to end, without HTTP: a run can start from Python, loop through the LLM and tools, fail safely, stop at limits, and pause at the approval node. The knowledge-base tool arrives in M2; tests here register a test double under its name. Approval rows and decisions, the API and the CLI arrive in M3.
 
@@ -269,3 +269,5 @@ None. In round 1 (2026-09-27) the owner accepted both defaults: `t_ms` is Unix e
 | T6 tester | PASS | 210 tests; added refused plus allowed calls (one tool message each, in order), blocked call skips approval, no side effect before the pause, one OpenAI client per runner, `create_run` input checks, unknown run id, counters in the checkpoint, `finished_at`, a `TimeoutError` inside a node is `internal_error`, outer cancellation writes no `done`, no secrets in run events |
 | T6 reviewer | REQUEST CHANGES, fixed | MAJOR fixed: the checkpointer connection is autocommit (`isolation_level=None`); a checkpoint write cancelled between INSERT and commit left a transaction open and locked the file (reviewer probe; regression test fails without the fix). MINOR fixed: `run_segment` refuses a run that has already started (M3 handoff updated). NITs fixed: `Runner.open` closes both connections if setup fails; cancellation test waits until the tool runs; DESIGN §4 says LangSmith tracing stays off; M3 handoff notes an approval pause with `max_tool_calls` already set. 212 tests |
 | T6 re-review | APPROVE | All five findings checked as fixed; 212 tests |
+| T6 commit | acb7304 | |
+| Phase 4 | done | Every Proof test name exists in the suite; plans/README.md status `done`; PR #2 description completed |
