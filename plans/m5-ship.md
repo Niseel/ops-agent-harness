@@ -29,12 +29,12 @@ Make the project easy to run and to review: one Docker command, full CI, end-to-
 ## Risks
 - The image grows with RAGAS dependencies; keep dev dependencies out of it.
 - Scenario evals depend on `FakePlanner` rules and fixtures; a change there must update the scenario files in the same commit.
-- Postman is checked with `npx newman run docs/postman_collection.json` against a running API; the collection must not depend on ids typed by hand.
+- Postman is checked with `npx newman run docs/postman_collection.json --folder "1. Demo flow: create → approve → trace"` against a running API; the collection must not depend on ids typed by hand. Full-collection runs need `--timeout-request 30000` and are not part of the proof (the evaluation request can be slow).
 
 ## Proof
 | AC | Evidence |
 |----|----------|
-| AC-17 | Clean clone follows README (fake LLM): tests pass, demo run with approval completes; `npx newman run docs/postman_collection.json` passes; each review-guide row checked |
+| AC-17 | Clean clone follows README (fake LLM): tests pass, demo run with approval completes; `npx newman run docs/postman_collection.json --folder "1. Demo flow: create → approve → trace"` passes; each review-guide row checked |
 | AC-18 | `evals/run.sh` output: every scenario passes `evals/check.sh` |
 
 ## Pipeline log

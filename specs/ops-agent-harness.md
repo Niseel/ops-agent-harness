@@ -242,7 +242,7 @@ SQLite file `DB_PATH` ([0004](../docs/adr/0004-state-and-database-sqlite.md)): L
 ([0008](../docs/adr/0008-evaluation-ragas-offline-online.md))
 
 - **Offline**: `evals/kb_golden.jsonl` (`eval.golden_set`, relative to the repo root), lines of `{question, reference, relevant_doc_ids}`. Each question runs in `hybrid`, `dense` and `sparse` modes. Deterministic metrics `hit@3`, `MRR@10` and `recall@3` by `doc_id`; RAGAS `ContextPrecision` and `ContextRecall` when a judge is reachable. The report is stored in `eval_reports`.
-- **Online** (option `evaluate`, default `eval.online_default` when a judge is reachable): after a run finishes, a background job stores in `evals` the context relevance of every search call, and the faithfulness (against all tool outputs of the run) and answer relevancy of the final answer. Faithfulness below `eval.thresholds.faithfulness`, or context relevance below `eval.thresholds.context_relevance`, emits a `warn` event.
+- **Online** (option `evaluate`, default `eval.online_default` when a judge is reachable): after a run finishes, a background job stores in `evals` the context relevance of every search call, and the faithfulness (against all tool outputs of the run) and answer relevancy of the final answer. Faithfulness below `eval.thresholds.faithfulness`, or context relevance below `eval.thresholds.context_relevance`, emits a `warn` event. These `eval` events come after `done`, so they are in `GET /api/runs/{id}` (`evals`) and `/trace`, not in a live stream that already closed; the UI re-reads the run to show the badges.
 - **Judge**: `JUDGE_*` env vars, defaulting to `LLM_*`. Unreachable → metric `null` with a reason. Evaluation never changes a run's status.
 - **Scenario evals**: `evals/<name>.json` = `{name, objective, llm, limits?, faults?, decisions, expect: {status, attempts?, incidents?, search_mode?}}`. `decisions` is a list of `{decision, reason?, args?}` applied in order to the approvals as they appear. `evals/run.sh` starts each scenario through the API, sends the listed decisions, saves `GET /api/runs/{id}/trace`, and `evals/check.sh <scenario> <trace>` grades it with `jq`.
 
@@ -253,18 +253,18 @@ All routes are under `/api`, return JSON, and follow [the API standard](../.clau
 | Method | Path | Body / query | Success | Errors |
 |---|---|---|---|---|
 | POST | `/api/runs` | `{objective: 1–2000 chars, llm?: fake\|openai, options?: {limits?, faults?, evaluate?}}` | 202 `{run_id, status}` | 422 |
-| GET | `/api/runs` | `?limit=` (default 20, max 100) | 200 list, newest first | 422 |
-| GET | `/api/runs/{id}` | | 200 run, messages, tool calls with attempts, approvals, evals | 404 |
+| GET | `/api/runs` | `?limit=` (default 20, max 100) | 200 list of run summaries `{id, objective, status, llm_mode, steps, tool_calls, created_at, updated_at}`, newest first | 422 |
+| GET | `/api/runs/{id}` | | 200 run summary plus `options`, `final`, `error`, `messages`, `calls` (each tool call with arguments, attempts, duration, result), `approvals`, `evals` | 404 |
 | GET | `/api/runs/{id}/events` | header `Last-Event-ID` | 200 `text/event-stream`: stored events, then live ones; SSE `id` = `seq`; keep-alive every 15 s; closes after the `done` event | 404 |
-| GET | `/api/runs/{id}/trace` | | 200 all events as JSON | 404 |
-| POST | `/api/runs/{id}/approvals/{approval_id}` | `{decision: approve\|reject\|edit, reason?, args?}` | 200 approval | 401, 404, 409, 422 |
+| GET | `/api/runs/{id}/trace` | | 200 `{run_id, status, events: [event, ...]}` in `seq` order | 404 |
+| POST | `/api/runs/{id}/approvals/{approval_id}` | `{decision: approve\|reject\|edit, reason?, args?}` | 200 approval (updated) | 401, 404, 409, 422 |
 | POST | `/api/runs/{id}/resume` | | 202 | 404, 409 (not `interrupted`) |
 | POST | `/api/runs/{id}/cancel` | | 200; pending approvals become `cancelled` | 404, 409 (already final) |
-| GET | `/api/approvals` | `?status=pending` | 200 list | |
+| GET | `/api/approvals` | `?status=pending` | 200 list of approvals `{id, run_id, tool_call_id, tool, args, status, decision, reason, decided_by, created_at, decided_at, expires_at}` (`decision` holds edited arguments) | 422 |
 | POST | `/api/eval/kb` | `{modes?}` | 200 `text/event-stream` progress, then the report | 503 (no knowledge base) |
 | GET | `/api/eval/kb/latest` | | 200 report | 404 |
-| GET | `/api/tools` | | 200 name, description, input schema, `requires_approval` | |
-| GET | `/api/incidents` | | 200 incidents in the mock system | |
+| GET | `/api/tools` | | 200 list of `{name, description, input_schema, requires_approval}` | |
+| GET | `/api/incidents` | | 200 list of `{id, run_id, title, description, severity, status, created_at}` | |
 | GET | `/api/health` | | 200 DB, LLM, embeddings, Qdrant, judge, knowledge base mode (`hybrid`, `sparse_only`, `unavailable`) | |
 
 Every state-changing call (create run, decide, resume, cancel, start evaluation) emits an event with actor (`current_user()`), action, entity id and time.
@@ -315,7 +315,7 @@ Each AC names how it is proved. Unit and API tests run with `ScriptedLLM` or `Fa
   - Given a tool returns data that breaks its output model, then the LLM receives `bad_output` and the call is not retried.
   - Given a tool result longer than `output.max_tool_result_chars`, then the LLM receives it cut to that length with `"truncated": true`.
 - **AC-4** (R4)
-  - Given a finished run, when a client calls `GET /api/runs/{id}`, then it returns the objective, status, options, the messages in order, every tool call with arguments, attempts, duration and result, and every approval.
+  - Given a finished run, when a client calls `GET /api/runs/{id}`, then it returns the objective, status, options, the messages in order, every tool call (`calls`) with arguments, attempts, duration and result, and every approval.
   - Given the API process restarts, when the same run is read, then the same data is returned.
 - **AC-5** (R5) Given `get_service_status` is faulted to time out twice and `max_attempts` is 3, when the run executes, then the call has 3 attempts and 2 `retry` events, the third attempt succeeds, and the run completes.
 - **AC-6** (R5) Given a tool fails on every attempt with `timeout` or `unavailable`, when the attempts run out, then the LLM receives an envelope of that type and the run continues to the next LLM step instead of failing.

@@ -24,7 +24,7 @@ The web UI from [ADR 0015](../docs/adr/0015-ui-run-console-not-chat.md) and [ADR
 | T2 | Run form (objective, LLM mode, fault switches, limits, evaluate), runs list, run timeline (AC-13) | frontend/src/app/runs | - | T1 | no | 2h |
 | T3 | Approval inbox (TTL countdown, approve, edit, reject with reason), budget meters, attention list (AC-13) | frontend/src/app/side | - | T2 | no | 1h |
 | T4 | Tool-aware flow graph, NOW bar, console filters, attention colours with icon and text (AC-13) | frontend/src/app/flow, core/trace.ts | - | T3 | no | 1.5h |
-| T5 | Evaluation tab (modes compared), RAGAS badges, incidents tab (AC-13) | frontend/src/app/eval, incidents | ai-engineer | T4 | no | 1h |
+| T5 | Evaluation tab (modes compared), RAGAS badges (read from `GET /api/runs/{id}` after `done`, not the live stream), incidents tab (AC-13) | frontend/src/app/eval, incidents | ai-engineer | T4 | no | 1h |
 | T6 | Frontend specs: `TraceStore` (node states, NOW bar, attention mapping), approval inbox (AC-13) | frontend/src/**/*.spec.ts | - | T5 | no | 0.5h |
 
 ## Risks

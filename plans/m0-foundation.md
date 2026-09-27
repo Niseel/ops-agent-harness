@@ -51,3 +51,5 @@ Everything a reviewer or a coding agent needs before any harness code: project s
 | T5 review | APPROVE | round 2; minors fixed: AC-9 label in M1, `embeddings` fault counter and owner, injected-document ranking risk |
 | T5 commit | 109708c | plans for M0–M5 |
 | T6 review | REQUEST_CHANGES → fixed | API table rule now points at the spec; future items; fault-injection wording; `DATA_DIR`/`CONFIG_PATH`; relative paths from repo root (bug found while writing `.env.example`). Owner created `.env.example` (agents are denied `.env.*`) |
+| T6 commit | b9492d9 | design report, `.env.example`, config path fix |
+| T7 review | REQUEST_CHANGES → APPROVE | round 1: demo trace raced with online eval (evaluate off in the demo), eval events after `done`, `calls` vs `tool_calls`, SSE request could hang newman; round 2 approved |
