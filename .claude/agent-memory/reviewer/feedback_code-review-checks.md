@@ -17,5 +17,10 @@ Found in the M1 T2 review (2026-09-27):
 - FakePlanner builds `create_incident` arguments from pieces with separate caps (objective[:1800], snippet[:150]) but left `doc_id` uncapped: a 51-char doc id plus a 2000-char objective gave a 2012-char description. Probe with a long objective AND long uncapped fields; the tests used short ids. A final `[:2000]` cut is the simple fix.
 - `AsyncOpenAI(api_key="")` raises `OpenAIError` at construction (only None falls back to env, and empty is rejected). Matters wherever the client is built (T6 runner) if `LLM_API_KEY` is set empty for a keyless local server.
 
+Found in the M1 T3 review (2026-09-27):
+
+- `unique_ids` replaces a missing or reused provider id with `s<step>c<i>` but never checks that the generated id is free: provider ids `("s3c1", None)` at step 3 give `["s3c1", "s3c1"]`, and a history id `s3c0` collides too. The plan rule is written the same way, so the coder follows it. Probe with ids in the harness's own format.
+- Attention values an event sets that the spec's attention table does not list (e.g. `llm` + `error` on unavailable) need a spec row, since the M4 UI maps from that table.
+
 **Why:** the tester runs the listed tests; these gaps pass them.
 **How to apply:** on every review touching logging, SQL or the tracer, run the probes above in the scratchpad. See also [[spec-adr-config-drift-hotspots]].

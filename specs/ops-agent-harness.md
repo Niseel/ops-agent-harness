@@ -152,7 +152,7 @@ Modes, chosen per run; default from `LLM_DEFAULT` ([0003](../docs/adr/0003-llm-o
 - `fake`: `FakePlanner`, rule-based. Searches the knowledge base, checks the service named in the objective, and proposes an incident only if the objective asks for one (contains "incident") and the service is `degraded` or `down` (severity from the policy it found). If a search result contains an instruction to open an incident, it follows it and proposes that incident: it imitates a model that falls for prompt injection, so the approval gate can be shown stopping it. Then it answers.
 - Tests use `ScriptedLLM`: a fixed list of replies.
 
-`llm_gateway` retries API errors and timeouts (`llm.max_attempts`, `llm.timeout_s`); when attempts run out the run fails with `llm_unavailable`. It classifies each reply:
+`llm_gateway` retries only transient errors (connection errors, timeouts, HTTP 408, 409, 429 and 5xx), up to `llm.max_attempts`, each attempt limited by `llm.timeout_s`; other API errors fail the call at once. When the call fails, the run fails with `llm_unavailable`. It classifies each reply:
 
 - **final**: text and no tool calls,
 - **tool calls**: valid JSON arguments for registered tools, at most `limits.max_calls_per_reply`,
@@ -219,6 +219,7 @@ Events are appended to the `events` table and published to live subscribers. The
 | Malformed reply repaired | `llm` | `warn` | orange |
 | Faithfulness or context relevance below threshold | `eval` | `warn` | orange |
 | Tool failed after all attempts, call blocked | `tool` | `error` | red |
+| LLM call failed after all attempts, or a non-transient API error | `llm` | `error` | red |
 | Run `failed`, `limit_exceeded`, `timed_out` | `done` | `error` | red |
 | Search in `sparse_only` mode | `tool` | `info` | blue |
 | Call edited or rejected by the operator | `approval` | `info` | blue |
