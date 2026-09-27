@@ -1,0 +1,3 @@
+- [Plan checks](feedback_plan-checks.md) — gaps found in M1 phase 1: tests needing later tasks, shared files, hidden deps, handoffs, demo facts
+- [Library notes pointer](reference_library-notes.md) — LangGraph/checkpoint-sqlite/openai facts live in plans/m1-harness-core.md; key ones for M2/M3
+- [Private name never in repo](project_private-name.md) — earlier private project's name must not appear in any repo file or this memory dir

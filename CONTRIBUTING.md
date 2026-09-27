@@ -49,6 +49,10 @@ Plan: plans/m1-harness-core.md T3
 - Fill in [the template](.github/pull_request_template.md): plan, acceptance criteria with their tests, check output, reviewer verdict.
 - Merge with **Rebase and merge** so every reviewed commit stays in `main`.
 
+## Code conventions
+
+- Timestamps: call `app.clock.now_iso()` (ISO-8601 UTC, milliseconds, `Z`, e.g. `2026-09-27T09:00:00.123Z`). Never format a date by hand. Timestamps that come from tools or fixtures use the same format; output models check it with `app.clock.ISO_PATTERN`. Ruff rule `DTZ` refuses naive datetimes, and `test_tracing.py::test_only_clock_formats_timestamps` refuses date formatting anywhere else in `backend/app/`.
+
 ## Checks
 
 Run the commands in [CLAUDE.md](CLAUDE.md) before every commit. CI runs them again on every pull request, together with branch, title and commit message checks (`.github/scripts/check-conventions.sh`).

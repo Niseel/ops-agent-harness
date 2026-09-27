@@ -14,7 +14,7 @@ One file per decision. Each record says what problem we had, what we considered,
 | [0007](0007-embeddings-api-sparse-fallback.md) | Embeddings via API, BM25-only fallback | Accepted |
 | [0008](0008-evaluation-ragas-offline-online.md) | Evaluation: RAGAS offline (golden set) and online (per run) | Accepted (golden set path updated by 0018) |
 | [0009](0009-human-approval-interrupt.md) | Human approval before `create_incident` | Accepted |
-| [0010](0010-failure-handling-envelope-retry-repair.md) | Failure handling: result envelope, selective retry, reply repair | Accepted (`max_repairs` clarified) |
+| [0010](0010-failure-handling-envelope-retry-repair.md) | Failure handling: result envelope, selective retry, reply repair | Accepted (`max_repairs` clarified; LLM retries limited to transient errors) |
 | [0011](0011-execution-limits.md) | Execution limits in layers | Accepted (`max_repairs` clarified) |
 | [0012](0012-fault-injection-per-run.md) | Fault injection per run | Accepted (`embeddings` fault added) |
 | [0013](0013-recovery-interrupted-runs.md) | Recovery: interrupted runs resume by hand | Accepted |

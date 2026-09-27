@@ -83,6 +83,8 @@ running ──(process restart)──► interrupted ──resume──► runni
 awaiting_approval | interrupted ──cancel──► cancelled
 ```
 
+A run that ends `failed`, `limit_exceeded` or `timed_out` stores an `error` code: `llm_unavailable`, `malformed_reply`, `max_steps`, `max_tool_calls`, `recursion_limit`, `max_run_seconds` or `internal_error` ([docs/DESIGN.md](../docs/DESIGN.md#3-database-design)).
+
 A run executes in **segments**: from start (or resume, or a decision) until it finishes or pauses. Each segment runs as a background task with a per-run lock, so two decisions or resumes never run the same run at once.
 
 - Only the API process runs startup recovery (`running` → `interrupted`). The CLI never does, because it may share the database with a running API.
@@ -152,7 +154,7 @@ Modes, chosen per run; default from `LLM_DEFAULT` ([0003](../docs/adr/0003-llm-o
 - `fake`: `FakePlanner`, rule-based. Searches the knowledge base, checks the service named in the objective, and proposes an incident only if the objective asks for one (contains "incident") and the service is `degraded` or `down` (severity from the policy it found). If a search result contains an instruction to open an incident, it follows it and proposes that incident: it imitates a model that falls for prompt injection, so the approval gate can be shown stopping it. Then it answers.
 - Tests use `ScriptedLLM`: a fixed list of replies.
 
-`llm_gateway` retries API errors and timeouts (`llm.max_attempts`, `llm.timeout_s`); when attempts run out the run fails with `llm_unavailable`. It classifies each reply:
+`llm_gateway` retries only transient errors (connection errors, timeouts, HTTP 408, 409, 429 and 5xx), up to `llm.max_attempts`, each attempt limited by `llm.timeout_s`; other API errors fail the call at once. When the call fails, the run fails with `llm_unavailable`. It classifies each reply:
 
 - **final**: text and no tool calls,
 - **tool calls**: valid JSON arguments for registered tools, at most `limits.max_calls_per_reply`,
@@ -189,7 +191,7 @@ The system prompt tells the model that tool results are data, never instructions
 
 ([0012](../docs/adr/0012-fault-injection-per-run.md)) `options.faults` in the run request, for example `{"get_service_status": {"mode": "timeout", "times": 2}, "llm": {"mode": "malformed", "times": 1}}`.
 
-- Tool modes: `timeout`, `error` (→ `unavailable`), `bad_output`, `latency` (adds `ms`, default 1000, then returns normally), `timeout_after_commit` (only for `create_incident`: the incident is stored, then the call times out).
+- Tool modes: `timeout`, `error` (→ `unavailable`), `bad_output` (the tool does not run), `latency` (adds `ms`, default 1000, then returns normally), `timeout_after_commit` (only for `create_incident`: the incident is stored, then the call times out).
 - LLM modes: `malformed`, `timeout`.
 - `embeddings` with mode `error`: the embedding call fails, so search runs in `sparse_only` mode.
 - `times` defaults to 1. Faults hit the first `times` attempts, counted from `tool_attempts` / `llm_attempts` / `embed_attempts` in the checkpoint, so a resume behaves the same.
@@ -205,6 +207,8 @@ kind ∈ stage | llm | tool | retry | approval | eval | log | error | done
 attention ∈ null | info | warn | error | success
 ```
 
+`t_ms` is Unix epoch milliseconds.
+
 Events are appended to the `events` table and published to live subscribers. The same events go to stdout as JSON log lines with `run_id`. Known secret values are masked. Audit events for state-changing API calls use kind `log` with `data = {actor, action, entity_id}`; `run_id` is empty for actions that are not about one run (starting an evaluation).
 
 `attention` marks what a human should notice. The UI picks the colour from `attention` and `kind` ([0015](../docs/adr/0015-ui-run-console-not-chat.md)):
@@ -217,6 +221,7 @@ Events are appended to the `events` table and published to live subscribers. The
 | Malformed reply repaired | `llm` | `warn` | orange |
 | Faithfulness or context relevance below threshold | `eval` | `warn` | orange |
 | Tool failed after all attempts, call blocked | `tool` | `error` | red |
+| LLM call failed after all attempts, or a non-transient API error | `llm` | `error` | red |
 | Run `failed`, `limit_exceeded`, `timed_out` | `done` | `error` | red |
 | Search in `sparse_only` mode | `tool` | `info` | blue |
 | Call edited or rejected by the operator | `approval` | `info` | blue |

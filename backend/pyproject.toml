@@ -7,6 +7,10 @@ dependencies = [
     "uvicorn[standard]",
     "pydantic-settings",
     "pyyaml",
+    "aiosqlite>=0.22.1",
+    "openai>=3.19.2,<4",
+    "langgraph>=1.2.12,<2",
+    "langgraph-checkpoint-sqlite>=3.1.1,<4",
 ]
 
 [dependency-groups]
@@ -24,4 +28,4 @@ line-length = 120
 target-version = "py312"
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I", "B", "UP", "ASYNC"]
+select = ["E", "F", "W", "I", "B", "UP", "ASYNC", "DTZ"]  # DTZ: no naive datetimes

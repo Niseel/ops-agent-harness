@@ -1,35 +1,24 @@
 """Logging to stdout: JSON lines (default) or plain text.
 
-Pass run_id / node / tool / attempt with `extra=` and they become JSON fields,
-so one run can be filtered out of the stream (`jq 'select(.run_id=="…")'`).
-Known secret values are masked in every line.
+Pass run_id / node / tool / attempt / seq / kind / status / attention / data
+with `extra=` and they become JSON fields, so one run can be filtered out of
+the stream (`jq 'select(.run_id=="…")'`). Known secret values are masked in
+the whole line, exception text included.
 """
 
 import json
 import logging
 import sys
-from datetime import UTC, datetime
 
-FIELDS = ("run_id", "node", "tool", "attempt")
+from app.clock import now_iso
 
-
-class _Redact(logging.Filter):
-    def __init__(self, secrets: list[str]) -> None:
-        super().__init__()
-        self.secrets = secrets
-
-    def filter(self, record: logging.LogRecord) -> bool:
-        msg = record.getMessage()
-        for s in self.secrets:
-            msg = msg.replace(s, "***")
-        record.msg, record.args = msg, None
-        return True
+FIELDS = ("run_id", "node", "tool", "attempt", "seq", "kind", "status", "attention", "data")
 
 
 class JsonFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
         out = {
-            "ts": datetime.fromtimestamp(record.created, UTC).isoformat(timespec="milliseconds"),
+            "ts": now_iso(record.created),
             "level": record.levelname,
             "logger": record.name,
             "msg": record.getMessage(),
@@ -40,10 +29,33 @@ class JsonFormatter(logging.Formatter):
         return json.dumps(out, default=str, ensure_ascii=False)
 
 
+class TextFormatter(logging.Formatter):
+    def __init__(self) -> None:
+        super().__init__("%(asctime)s %(levelname)s %(name)s: %(message)s")
+
+    def formatTime(self, record: logging.LogRecord, datefmt: str | None = None) -> str:
+        return now_iso(record.created)  # the project format, not local time
+
+
+class _Masked(logging.Formatter):
+    """Wraps another formatter and masks secrets in its finished output."""
+
+    def __init__(self, inner: logging.Formatter, secrets: list[str]) -> None:
+        super().__init__()
+        self.inner = inner
+        # JSON escapes quotes, backslashes and control characters, so look for the escaped form too.
+        forms = {form for s in secrets if s for form in (s, json.dumps(s, ensure_ascii=False)[1:-1])}
+        self.secrets = sorted(forms, key=len, reverse=True)
+
+    def format(self, record: logging.LogRecord) -> str:
+        line = self.inner.format(record)
+        for secret in self.secrets:
+            line = line.replace(secret, "***")
+        return line
+
+
 def setup(level: str, fmt: str, secrets: list[str]) -> None:
+    inner = JsonFormatter() if fmt == "json" else TextFormatter()
     handler = logging.StreamHandler(sys.stdout)
-    handler.addFilter(_Redact(secrets))
-    handler.setFormatter(
-        JsonFormatter() if fmt == "json" else logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
-    )
+    handler.setFormatter(_Masked(inner, secrets))
     logging.basicConfig(level=level, handlers=[handler], force=True)

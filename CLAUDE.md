@@ -38,4 +38,5 @@ Frontend and eval commands are added by the milestone that introduces them.
 - Branches, commit messages and PRs follow CONTRIBUTING.md. No `Co-Authored-By` or "Generated with" lines.
 - You may commit and open PRs (`gh pr create`) once a human has pushed the branch. Review fixes are new commits unless the human asks for an amend.
 - Everything in the repo is in English: plain words, short sentences.
+- Timestamps come only from `app.clock.now_iso()` (see CONTRIBUTING.md, Code conventions).
 - A behaviour change updates its docs in the same commit (docs/DESIGN.md, ADRs, docs/REVIEW_GUIDE.md, docs/postman_collection.json).
