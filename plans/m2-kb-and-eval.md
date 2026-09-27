@@ -1,6 +1,6 @@
 # Plan: M2 knowledge base and evaluation   (from [specs/ops-agent-harness.md](../specs/ops-agent-harness.md))
 
-Status: approved (gate 1, 2026-09-27). Branch: `feat/m2-kb-and-eval`. PR title: `feat: M2 knowledge base search and evaluation`.
+Status: done (gate 1 approved 2026-09-27; all four tasks committed 2026-09-27). Branch: `feat/m2-kb-and-eval`. PR title: `feat: M2 knowledge base search and evaluation`.
 
 The real `search_knowledge_base` (hybrid dense + BM25 on Qdrant, fused with RRF, BM25-only fallback) and quality measurement with RAGAS: offline on a golden set, and online after each run. Tests use in-memory Qdrant, a fake embedder and a fake judge; `live` tests use real endpoints and skip themselves when those do not answer. The HTTP endpoints for evaluation and health, the CLI `ingest` and `eval` commands, and background tasks arrive in M3.
 
@@ -291,3 +291,5 @@ None. In round 1 (2026-09-27) the owner accepted all three defaults: the `evalua
 | T4 build | done | Skills: `ai-engineer` invoked. `eval/online.py` (targets, contexts, judge probed once, null rows, `eval` events with thresholds), `create_run` resolves `evaluate` (probe only when `online_default` is on), `_finish` evaluates after `done` and isolates failures (it now takes the run options instead of the graph config), store `insert_eval`/`list_evals`, autouse `no_real_judge`; `test_limits_stored_on_the_run` changed on purpose (`evaluate` is False); spec, DESIGN and ADR 0008 notes. 296 tests, 2 live skipped |
 | T4 tester | PASS | 306 tests, 2 live skipped; added `CancelledError` propagates, `evaluate: false` stores nothing, a paused run is not evaluated, a run without search gets only answer rows (`no contexts`), failed and zero-result searches are not scored, two searches in message order, failed and timed-out runs are evaluated (outside the segment limit), reasons masked in the row and the event |
 | T4 reviewer | APPROVE | MINOR fixed: the spec attention row for `eval`/`info` covers every null (judge unreachable, metric error, no value, no contexts); M3 handoff: cancel decides 409 from the run row, so a run in evaluation never gets a second `done`. NITs fixed: no judge probe when there is nothing to score; the T3 judge-cache test is listed under tests changed on purpose; the isolation test checks the whole run row; module-level `eval_log` in the runner. 307 tests, 2 live skipped |
+| T4 commit | f70c2c3 | |
+| Phase 4 | done | Every Proof test name (37) exists in the suite; plans/README.md status `done`; PR #3 description completed |
