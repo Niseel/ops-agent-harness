@@ -15,7 +15,11 @@ node_modules/
 frontend/dist/
 frontend/.angular/
 
-# OS / editors / local tooling
+# OS / editors
 .DS_Store
 .idea/
-.claude/
+
+# Claude Code: personal settings and local agent memory stay local;
+# agents, hooks, skills and settings.json are shared.
+.claude/settings.local.json
+.claude/agent-memory-local/

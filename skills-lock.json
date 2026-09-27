@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "ai-engineer": {
+      "source": "sickn33/agentic-awesome-skills",
+      "sourceType": "github",
+      "skillPath": "skills/ai-engineer/SKILL.md",
+      "computedHash": "08c681832aa139230bb1e59605a92aa0100fa29fa4dd617932442d5aa616b3aa"
+    }
+  }
+}

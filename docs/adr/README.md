@@ -4,6 +4,7 @@ One file per decision. Each record says what problem we had, what we considered,
 
 | # | Decision | Status |
 |---|---|---|
+| [0000](0000-record-architecture-decisions.md) | Record architecture decisions | Accepted |
 | [0001](0001-backend-python-fastapi.md) | Backend: Python 3.12 + FastAPI + uv | Accepted |
 | [0002](0002-agent-loop-langgraph-custom-nodes.md) | Agent loop: LangGraph engine, our own nodes | Accepted |
 | [0003](0003-llm-openai-compatible-with-fake.md) | LLM: raw OpenAI SDK, any OpenAI-compatible provider, fake by default | Accepted |
@@ -20,7 +21,8 @@ One file per decision. Each record says what problem we had, what we considered,
 | [0014](0014-observability-trace-events.md) | Observability: trace events + JSON logs | Accepted |
 | [0015](0015-ui-run-console-not-chat.md) | UI concept: run console with approval inbox, not a chat | Accepted |
 | [0016](0016-ui-angular.md) | UI tech: Angular | Accepted |
-| [0017](0017-docs-postman-ci.md) | Docs in repo, Postman collection, CI | Accepted |
+| [0017](0017-docs-postman-ci.md) | Docs in repo, Postman collection, CI | Accepted (plan doc replaced by 0018) |
+| [0018](0018-adopt-ai-sdlc-workflow.md) | Adopt the AI-SDLC workflow | Accepted |
 
 ## Format
 

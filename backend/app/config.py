@@ -52,8 +52,17 @@ class Settings(BaseSettings):
 
     def secrets(self) -> list[str]:
         """Values the logger must never print."""
-        return [s for s in (self.llm_api_key, self.embed_api_key, self.judge_api_key,
-                            self.qdrant_api_key, self.approver_token) if len(s) > 3]
+        return [
+            s
+            for s in (
+                self.llm_api_key,
+                self.embed_api_key,
+                self.judge_api_key,
+                self.qdrant_api_key,
+                self.approver_token,
+            )
+            if len(s) > 3
+        ]
 
 
 class Strict(BaseModel):

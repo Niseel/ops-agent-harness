@@ -1,6 +1,6 @@
 # 0017. Docs in repo, Postman collection, CI
 
-Status: Accepted · Date: 2026-09-26
+Status: Accepted · Date: 2026-09-26 · `docs/PLAN.md` replaced by `plans/`, see [0018](0018-adopt-ai-sdlc-workflow.md)
 
 ## Context
 
