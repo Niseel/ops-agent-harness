@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -35,7 +35,7 @@ class Settings(BaseSettings):
     judge_base_url: str = ""
     judge_api_key: str = ""
     judge_model: str = ""
-    judge_json_mode: str = "json_schema"  # instructor mode: json_schema | json | md_json | tools
+    judge_json_mode: Literal["json_schema", "json", "md_json", "tools"] = "json_schema"  # instructor mode
 
     qdrant_url: str = "http://localhost:6333"
     qdrant_api_key: str = ""
@@ -106,7 +106,8 @@ class KB(Strict):
     top_k_dense: int = 10
     top_k_bm25: int = 10
     rrf_k: int = 60
-    top_n: int = 3
+    top_n: int = Field(3, ge=1, le=3)  # the search tool returns at most 3 results
+    embed_timeout_s: float = 2.0  # query embedding; slower counts as failed
 
 
 class BM25(Strict):

@@ -29,7 +29,8 @@ kb:
   top_k_dense: 10
   top_k_bm25: 10
   rrf_k: 60
-  top_n: 3
+  top_n: 3                 # results per search; at most 3 (the tool's output model)
+  embed_timeout_s: 2.0      # query embedding; slower counts as failed and the search runs sparse_only
 
 bm25:
   k1: 1.2

@@ -32,7 +32,7 @@ async def events(store, kind=None):
 
 def test_tool_schemas_exposed():
     defs = {d["function"]["name"]: d for d in registry.openai_tools()}
-    assert set(defs) == {"get_service_status", "create_incident"}
+    assert set(defs) == {"search_knowledge_base", "get_service_status", "create_incident"}
     for d in defs.values():
         assert d["type"] == "function" and d["function"]["description"]
         schema = d["function"]["parameters"]
@@ -41,6 +41,9 @@ def test_tool_schemas_exposed():
     assert defs["create_incident"]["function"]["parameters"]["required"] == ["title", "description", "severity"]
     assert registry.TOOLS["create_incident"].requires_approval
     assert not registry.TOOLS["get_service_status"].requires_approval
+    search = defs["search_knowledge_base"]["function"]["parameters"]
+    assert list(search["properties"]) == ["query"] and search["required"] == ["query"]  # mode stays internal
+    assert not registry.TOOLS["search_knowledge_base"].requires_approval
 
 
 async def test_status_returns_fixture_record(tracer, store):

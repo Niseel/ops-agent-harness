@@ -70,7 +70,7 @@ eval_reports              golden-set runs, not tied to a run
 | `runs` | `id`, `objective`, `status`, `llm_mode`, `options_json`, `final`, `error`, `steps`, `tool_calls`, timestamps | One row per run: list, status, options for resume |
 | `approvals` | `id`, `run_id`, `tool_call_id`, `tool`, `args_json`, `status`, `decision_json`, `reason`, `decided_by`, `expires_at` | Audit of human decisions. `UNIQUE(run_id, tool_call_id)`; decisions update only `pending` rows |
 | `events` | `seq` (autoincrement), `run_id`, `t_ms`, `kind`, `node`, `tool`, `status`, `attention`, `msg`, `data_json` | Trace for the UI, the API and replays (`Last-Event-ID`). Index on `(run_id, seq)` |
-| `evals` | `id`, `run_id`, `target`, `metric`, `value`, `judge_model`, `error` | Online scores: context relevance per search, faithfulness and answer relevancy of the answer |
+| `evals` | `id`, `run_id`, `target`, `metric`, `value`, `judge_model`, `error` | Online scores: context relevance per search, faithfulness and answer relevancy of the answer. `target` is `search:<tool_call_id>` or `answer` |
 | `eval_reports` | `id`, `created_at`, `models_json`, `config_json`, `summary_json`, `rows_json` | Offline golden-set reports, compared across runs |
 | `incidents` | `id`, `idempotency_key` (unique), `run_id`, `title`, `description`, `severity`, `status` | The mock external system. A retried call returns the same incident |
 
@@ -90,7 +90,7 @@ A run that ends `failed`, `limit_exceeded` or `timed_out` stores one of these co
 | `internal_error` | `failed` | Any other exception; the details are only in the log |
 | `max_run_seconds` | `timed_out` | The segment ran longer than `max_run_seconds` |
 
-The knowledge base lives in Qdrant, collection `ops_kb`: one point per runbook section with a `dense` vector, a `bm25` sparse vector (IDF applied by Qdrant) and payload `doc_id, title, section, text, content_hash, embed_model` ([ADR 0006](adr/0006-vector-store-qdrant-no-rerank.md)).
+The knowledge base lives in Qdrant, collection `ops_kb`: one point per runbook section with a `dense` vector, a `bm25` sparse vector (IDF applied by Qdrant) and payload `doc_id, title, section, text, content_hash, embed_model` ([ADR 0006](adr/0006-vector-store-qdrant-no-rerank.md)). `content_hash` covers the documents and the embedding model; `embed_model` is null in a BM25-only index.
 
 ## 4. Safety controls
 
@@ -104,7 +104,7 @@ The knowledge base lives in Qdrant, collection `ops_kb`: one point per runbook s
 | Prompt injection in tool output | Tool output is untrusted data in the prompt; the approval gate is the hard stop |
 | Clients asking for more | Limits clamped to `config.yaml`; fault injection only when `ALLOW_FAULT_INJECTION=true` (on by default for local use) |
 | Leaking secrets | Secret values masked in logs and events; never returned by the API |
-| Data sent to external models | Local by default (fake LLM, LM Studio); fixtures are synthetic; cloud providers only when `LLM_*`, `EMBED_*` or `JUDGE_*` point at them |
+| Data sent to external models | Local by default (fake LLM, LM Studio); fixtures are synthetic; cloud providers only when `LLM_*`, `EMBED_*` or `JUDGE_*` point at them; RAGAS usage analytics are off (`RAGAS_DO_NOT_TRACK=true`) |
 | Run state sent to a tracing service | LangGraph installs the LangSmith client, but its tracing is off unless `LANGSMITH_TRACING=true` is set; the harness never sets it |
 
 ## 5. Observability
@@ -134,7 +134,7 @@ Two sources ([backend/app/config.py](../backend/app/config.py)):
 | `JUDGE_BASE_URL` | empty (reuse `LLM_BASE_URL`) | RAGAS judge endpoint |
 | `JUDGE_API_KEY` | empty (reuse `LLM_API_KEY`) | Key for the judge |
 | `JUDGE_MODEL` | empty (reuse `LLM_MODEL`) | Judge model; use a strong one for numbers you report |
-| `JUDGE_JSON_MODE` | `json_schema` | How the judge is forced to return JSON: `json_schema`, `json`, `md_json`, `tools` |
+| `JUDGE_JSON_MODE` | `json_schema` | How the judge is forced to return JSON: `json_schema`, `json`, `md_json`, `tools` (another value stops the app at startup) |
 | `QDRANT_URL` | `http://localhost:6333` | Qdrant server |
 | `QDRANT_API_KEY` | empty | Qdrant Cloud key |
 | `DB_PATH` | `data/harness.db` | SQLite file for state, history and the mock incident system |

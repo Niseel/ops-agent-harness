@@ -272,7 +272,7 @@ async def test_limits_stored_on_the_run(runner):
     run = await runner.create_run("Check payments-api", options={"limits": {"max_steps": 100, "max_tool_calls": 3}})
     stored = (await runner.store.get_run(run["id"]))["options"]
     assert stored["limits"] == {**cfg.limits.model_dump(), "max_tool_calls": 3}
-    assert stored["evaluate"] is None
+    assert stored["evaluate"] is False  # resolved at create_run; tests have no judge
 
 
 async def test_max_steps_stops_run(runner):

@@ -4,6 +4,7 @@ A fault hits the first `times` attempts of its target in the run, counted
 from the checkpointed attempt counters, so a resumed run behaves the same.
 """
 
+from dataclasses import dataclass
 from typing import Literal
 
 from pydantic import Field, model_validator
@@ -51,3 +52,17 @@ class Faults(Strict):
 def hits(fault: ToolFault | LLMFault | EmbeddingsFault | None, attempts_before: int) -> bool:
     """True when the next attempt (after `attempts_before` earlier ones in the run) must fail."""
     return fault is not None and attempts_before < fault.times
+
+
+@dataclass
+class EmbedCounter:
+    """The run's query-embedding attempts, for the `embeddings` fault. Starts from the checkpointed count."""
+
+    fault: EmbeddingsFault | None
+    attempts: int
+
+    def next_fails(self) -> bool:
+        """Called once per search attempt that would embed: True means this attempt is an injected failure."""
+        fails = hits(self.fault, self.attempts)
+        self.attempts += 1
+        return fails

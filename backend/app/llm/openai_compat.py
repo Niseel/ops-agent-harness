@@ -1,4 +1,4 @@
-"""LLM replies and the OpenAI-compatible client (ADR 0003).
+"""LLM replies, the OpenAI-compatible chat client and embedder (ADR 0003, ADR 0007).
 
 Every client has a `model` and `async complete(messages, tools) -> LLMReply`.
 The reply keeps the raw tool-call arguments string and `finish_reason`, so the
@@ -63,3 +63,24 @@ class OpenAICompatClient:
             model=self.model, messages=messages, temperature=cfg.llm.temperature, **extra
         )
         return to_reply(completion)
+
+
+class OpenAICompatEmbedder:
+    """Embeddings from any OpenAI-compatible endpoint (`EMBED_*`; an empty base URL or key reuses `LLM_*`)."""
+
+    def __init__(self, *, base_url: str, api_key: str, model: str) -> None:
+        self.model = model
+        self._sdk = AsyncOpenAI(base_url=base_url, api_key=api_key or "none", max_retries=0, timeout=cfg.llm.timeout_s)
+
+    @classmethod
+    def from_settings(cls) -> "OpenAICompatEmbedder":
+        return cls(
+            base_url=settings.embed_base_url or settings.llm_base_url,
+            api_key=settings.embed_api_key or settings.llm_api_key,
+            model=settings.embed_model,
+        )
+
+    async def embed(self, texts: list[str]) -> list[list[float]]:
+        # "float": without it the SDK asks for base64, which some compatible servers do not support.
+        response = await self._sdk.embeddings.create(model=self.model, input=texts, encoding_format="float")
+        return [item.embedding for item in sorted(response.data, key=lambda item: item.index)]

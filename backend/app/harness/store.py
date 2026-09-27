@@ -198,3 +198,45 @@ class Store:
             query, args = query + " WHERE run_id = ?", (run_id,)
         async with self._db.execute(query + " ORDER BY created_at, id", args) as cur:
             return [dict(row) for row in await cur.fetchall()]
+
+    # --- per-run evaluation --------------------------------------------------------------
+
+    async def insert_eval(
+        self, run_id: str, *, target: str, metric: str, value: float | None, judge_model: str | None, error: str | None
+    ) -> None:
+        await self._db.execute(
+            "INSERT INTO evals (run_id, target, metric, value, judge_model, error, created_at)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (run_id, target, metric, value, judge_model, error, now_iso()),
+        )
+
+    async def list_evals(self, run_id: str) -> list[dict]:
+        async with self._db.execute("SELECT * FROM evals WHERE run_id = ? ORDER BY id", (run_id,)) as cur:
+            return [dict(row) for row in await cur.fetchall()]
+
+    # --- evaluation reports ---------------------------------------------------------------
+
+    async def insert_eval_report(self, report: dict) -> None:
+        await self._db.execute(
+            "INSERT INTO eval_reports (id, created_at, models_json, config_json, summary_json, rows_json)"
+            " VALUES (?, ?, ?, ?, ?, ?)",
+            (
+                report["id"],
+                report["created_at"],
+                json.dumps(report["models"]),
+                json.dumps(report["config"]),
+                json.dumps(report["summary"]),
+                json.dumps(report["rows"]),
+            ),
+        )
+
+    async def latest_eval_report(self) -> dict | None:
+        async with self._db.execute("SELECT * FROM eval_reports ORDER BY created_at DESC, rowid DESC LIMIT 1") as cur:
+            row = await cur.fetchone()
+        if row is None:
+            return None
+        return {
+            "id": row["id"],
+            "created_at": row["created_at"],
+            **{key: json.loads(row[f"{key}_json"]) for key in ("models", "config", "summary", "rows")},
+        }

@@ -109,6 +109,10 @@ async def test_events_cover_every_step(runner, search):
         ("stage", "agent", None),
         ("llm", "agent", None),
         ("stage", "tools", None),
+        ("stage", "kb.embed", "search_knowledge_base"),
+        ("stage", "kb.dense", "search_knowledge_base"),
+        ("stage", "kb.bm25", "search_knowledge_base"),
+        ("stage", "kb.rrf", "search_knowledge_base"),
         ("tool", "tools", "search_knowledge_base"),
         ("stage", "guard", None),
         ("stage", "agent", None),
@@ -121,7 +125,7 @@ async def test_events_cover_every_step(runner, search):
         ("stage", "finalize", None),
         ("done", None, None),
     ]
-    guard = events[5]["data"]
+    guard = events[9]["data"]
     assert guard == {"steps": 1, "max_steps": 8, "tool_calls": 1, "max_tool_calls": 12}
     assert all(e["run_id"] == run["id"] for e in events)
 

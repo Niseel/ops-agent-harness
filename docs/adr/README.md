@@ -12,7 +12,7 @@ One file per decision. Each record says what problem we had, what we considered,
 | [0005](0005-kb-search-hybrid-rag.md) | Knowledge base search: hybrid RAG (dense + BM25, RRF) | Accepted |
 | [0006](0006-vector-store-qdrant-no-rerank.md) | Vector store: Qdrant server, no reranker | Accepted |
 | [0007](0007-embeddings-api-sparse-fallback.md) | Embeddings via API, BM25-only fallback | Accepted |
-| [0008](0008-evaluation-ragas-offline-online.md) | Evaluation: RAGAS offline (golden set) and online (per run) | Accepted (golden set path updated by 0018) |
+| [0008](0008-evaluation-ragas-offline-online.md) | Evaluation: RAGAS offline (golden set) and online (per run) | Accepted (golden set path updated by 0018; online evaluation refined in M2) |
 | [0009](0009-human-approval-interrupt.md) | Human approval before `create_incident` | Accepted |
 | [0010](0010-failure-handling-envelope-retry-repair.md) | Failure handling: result envelope, selective retry, reply repair | Accepted (`max_repairs` clarified; LLM retries limited to transient errors) |
 | [0011](0011-execution-limits.md) | Execution limits in layers | Accepted (`max_repairs` clarified) |

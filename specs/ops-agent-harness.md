@@ -109,7 +109,7 @@ START → guard ──limit hit────────────────�
 | agent | Calls the LLM through `llm_gateway` with the system prompt, history and tool schemas. Final answer, tool calls, or malformed. For tool calls it runs the pure checks (input validation, repeat guard, `max_tool_calls`, incident cap) so that a human is never asked to approve a call that would be refused anyway. The incident cap also counts earlier `create_incident` calls in the same reply. Refused calls do not run; they reach the `tools` step as error envelopes, so every `tool_call_id` gets a tool message. |
 | approval | Reads state, calls `interrupt({tool_call_id, tool, args})`, stores the decision. No side effect before `interrupt()`, because LangGraph re-runs the node on resume. If one reply mixes approval and non-approval calls, all of them wait for the decision. |
 | tools | Runs the pending calls one by one through `tool_gateway`, appends one tool message per call. |
-| finalize | Sets the final status and answer; queues online evaluation when enabled. |
+| finalize | Sets the final status and answer. |
 
 Agent state (in the checkpoint): `run_id, objective, messages, pending, decisions, steps, tool_calls, tool_attempts, llm_attempts, embed_attempts, call_counts, repairs, incidents, status, final, error`. `steps` counts every LLM call, including malformed ones. `tool_attempts` counts attempts per tool name across the run; `llm_attempts` and `embed_attempts` count LLM calls and query embedding calls for fault injection. Messages are plain OpenAI-style dicts. Run options (limits, faults, LLM mode, evaluate) are stored in `runs.options_json` and loaded into the runtime context at the start of each segment, together with the tracer and the LLM client.
 
@@ -119,7 +119,7 @@ Registry: one entry per tool with name, description, Pydantic input and output m
 
 | Tool | Input | Output | Notes |
 |---|---|---|---|
-| `search_knowledge_base` | `query`: 3–200 chars | `results`: up to 3 of `{doc_id, title, section, snippet, score, ranks: {dense, bm25, rrf}}`; `mode`: `hybrid` or `sparse_only` | Hybrid RAG ([0005](../docs/adr/0005-kb-search-hybrid-rag.md)). Qdrant down → `unavailable`. |
+| `search_knowledge_base` | `query`: 3–200 chars | `results`: up to 3 of `{doc_id, title, section, snippet, score, ranks: {dense, bm25, rrf}}`; `mode`: `hybrid` or `sparse_only` | Hybrid RAG ([0005](../docs/adr/0005-kb-search-hybrid-rag.md)). Qdrant down → `unavailable`. `snippet` is the first 400 characters of the section. |
 | `get_service_status` | `service_name`: `^[a-z0-9][a-z0-9-]{1,49}$` | `{service, status: operational\|degraded\|down, latency_p95_ms, error_rate, updated_at}` | Reads `data/services.json`. Unknown service → `not_found`. |
 | `create_incident` | `title`: 5–120 chars, `description`: 10–2000 chars, `severity`: `SEV1`–`SEV4` | `{incident_id, status: open, created_at}` | Needs approval ([0009](../docs/adr/0009-human-approval-interrupt.md)). The gateway adds `idempotency_key = run_id:tool_call_id`, hidden from the LLM. A known key returns the existing incident. |
 
@@ -229,7 +229,7 @@ Events are appended to the `events` table and published to live subscribers. The
 | Run `completed` | `done` | `success` | green |
 | Run `cancelled` | `done` | `info` | blue |
 | Approval expired | `approval` | `info` | blue |
-| Judge unreachable, metric `null` | `eval` | `info` | blue |
+| Metric `null` (judge unreachable, metric error, no value, no contexts) | `eval` | `info` | blue |
 
 Every final status (`completed`, `failed`, `limit_exceeded`, `timed_out`, `cancelled`) emits exactly one `done` event.
 
@@ -241,17 +241,17 @@ SQLite file `DB_PATH` ([0004](../docs/adr/0004-state-and-database-sqlite.md)): L
 
 ([0005](../docs/adr/0005-kb-search-hybrid-rag.md), [0006](../docs/adr/0006-vector-store-qdrant-no-rerank.md), [0007](../docs/adr/0007-embeddings-api-sparse-fallback.md))
 
-- Ingest (at startup and `cli ingest`): split `data/kb/*.md` by `##` section; embed each chunk (`EMBED_*`), build BM25 sparse vectors; upsert one Qdrant point per chunk with vectors `dense` and `bm25` (`Modifier.IDF`) and payload `doc_id, title, section, text, content_hash, embed_model`. Skip when the hash of (documents + embedding model) is unchanged; rebuild the collection when it changed. If embeddings fail, index BM25 only. If Qdrant is down at startup, the API still starts, logs a warning and `/api/health` reports the knowledge base as unavailable.
-- Query: embed the query, run dense and BM25 search in parallel (`kb.top_k_dense`, `kb.top_k_bm25`), fuse with RRF (`kb.rrf_k`), return `kb.top_n`. If embedding fails, BM25 only and `mode = sparse_only`.
+- Ingest (at startup and `cli ingest`): split `data/kb/*.md` by `##` section; embed each chunk (`EMBED_*`), build BM25 sparse vectors; upsert one Qdrant point per chunk with vectors `dense` and `bm25` (`Modifier.IDF`) and payload `doc_id, title, section, text, content_hash, embed_model`. Skip when the hash of (documents + embedding model) is unchanged; rebuild the collection when it changed. A BM25-only index is never skipped, so the next ingest adds dense vectors once embeddings answer. If embeddings fail, index BM25 only. If Qdrant is down at startup, the API still starts, logs a warning and `/api/health` reports the knowledge base as unavailable.
+- Query: embed the query, run dense and BM25 search in parallel (`kb.top_k_dense`, `kb.top_k_bm25`), fuse with RRF (`kb.rrf_k`), return `kb.top_n`. If embedding fails, BM25 only and `mode = sparse_only`. A query embedding slower than `kb.embed_timeout_s` counts as failed.
 - An internal `mode` parameter (`hybrid`, `dense`, `sparse`) exists for evaluation. The LLM only sees `query`.
-- Sub-steps emit `stage` events with node `kb.embed`, `kb.dense`, `kb.bm25`, `kb.rrf` and their rankings.
+- Sub-steps emit `stage` events with node `kb.embed`, `kb.dense`, `kb.bm25`, `kb.rrf` and their rankings (tool `search_knowledge_base`; `kb.embed` reports `ok`, `failed` or `skipped`).
 
 ### Evaluation
 
 ([0008](../docs/adr/0008-evaluation-ragas-offline-online.md))
 
-- **Offline**: `evals/kb_golden.jsonl` (`eval.golden_set`, relative to the repo root), lines of `{question, reference, relevant_doc_ids}`. Each question runs in `hybrid`, `dense` and `sparse` modes. Deterministic metrics `hit@3`, `MRR@10` and `recall@3` by `doc_id`; RAGAS `ContextPrecision` and `ContextRecall` when a judge is reachable. The report is stored in `eval_reports`.
-- **Online** (option `evaluate`, default `eval.online_default` when a judge is reachable): after a run finishes, a background job stores in `evals` the context relevance of every search call, and the faithfulness (against all tool outputs of the run) and answer relevancy of the final answer. Faithfulness below `eval.thresholds.faithfulness`, or context relevance below `eval.thresholds.context_relevance`, emits a `warn` event. These `eval` events come after `done`, so they are in `GET /api/runs/{id}` (`evals`) and `/trace`, not in a live stream that already closed; the UI re-reads the run to show the badges.
+- **Offline**: `evals/kb_golden.jsonl` (`eval.golden_set`, relative to the repo root), lines of `{question, reference, relevant_doc_ids}`. Each question runs in `hybrid`, `dense` and `sparse` modes. Deterministic metrics `hit@3`, `MRR@10` and `recall@3` by `doc_id` (`hit@3` and `recall@3` use the first 3 distinct `doc_id`s of the ranking, `MRR@10` the distinct `doc_id`s in the first 10 hits); RAGAS `ContextPrecision` and `ContextRecall` when a judge is reachable. The report is stored in `eval_reports`.
+- **Online** (option `evaluate`, default `eval.online_default` when a judge is reachable): after a run finishes, a background job stores in `evals` the context relevance of every search call, and the faithfulness (against all tool outputs of the run) and answer relevancy of the final answer. The runner runs it right after the `done` event of every run that ends `completed`, `failed`, `limit_exceeded` or `timed_out`, outside the segment's time limit. When `evaluate` is omitted and `eval.online_default` is true, `create_run` stores `true` if the judge answers `GET /models` within 2 s, else `false`; when `online_default` is false it stores `false` without asking the judge. Targets are `search:<tool_call_id>` and `answer`; a run without a final answer gets no answer metrics. Faithfulness below `eval.thresholds.faithfulness`, or context relevance below `eval.thresholds.context_relevance`, emits a `warn` event. These `eval` events come after `done`, so they are in `GET /api/runs/{id}` (`evals`) and `/trace`, not in a live stream that already closed; the UI re-reads the run to show the badges.
 - **Judge**: `JUDGE_*` env vars, defaulting to `LLM_*`. Unreachable → metric `null` with a reason. Evaluation never changes a run's status.
 - **Scenario evals**: `evals/<name>.json` = `{name, objective, llm, limits?, faults?, decisions, expect: {status, attempts?, incidents?, search_mode?}}`. `decisions` is a list of `{decision, reason?, args?}` applied in order to the approvals as they appear. `evals/run.sh` starts each scenario through the API, sends the listed decisions, saves `GET /api/runs/{id}/trace`, and `evals/check.sh <scenario> <trace>` grades it with `jq`.
 

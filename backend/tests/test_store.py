@@ -150,3 +150,35 @@ async def test_approvals_table_has_adr_0004_columns_and_unique_constraint(store)
 async def test_update_unknown_run_raises(store):
     with pytest.raises(LookupError):
         await store.update_run("missing", status="completed")
+
+
+async def test_latest_eval_report_round_trip(store):
+    assert await store.latest_eval_report() is None
+    old = {"id": "a", "created_at": "2026-09-27T09:00:00.000Z", "models": {}, "config": {}, "summary": {}, "rows": []}
+    new = {**old, "id": "b", "created_at": "2026-09-27T10:00:00.000Z", "rows": [{"mode": "hybrid", "hit@3": 1.0}]}
+    same_time = {**new, "id": "c"}
+    await store.insert_eval_report(old)
+    await store.insert_eval_report(new)
+    assert await store.latest_eval_report() == new
+    await store.insert_eval_report(same_time)
+    assert (await store.latest_eval_report())["id"] == "c"  # same created_at: the last one inserted
+
+
+async def test_evals_listed_per_run(store):
+    await store.create_run(id="r1", objective="o", llm_mode="fake", model="fake", options={})
+    await store.create_run(id="r2", objective="o", llm_mode="fake", model="fake", options={})
+    await store.insert_eval(
+        "r1", target="search:c0", metric="context_relevance", value=0.8, judge_model="j", error=None
+    )
+    await store.insert_eval(
+        "r2", target="answer", metric="faithfulness", value=None, judge_model="j", error="judge unreachable"
+    )
+    await store.insert_eval("r1", target="answer", metric="faithfulness", value=0.5, judge_model="j", error=None)
+    rows = await store.list_evals("r1")
+    assert [(r["target"], r["metric"], r["value"]) for r in rows] == [
+        ("search:c0", "context_relevance", 0.8),
+        ("answer", "faithfulness", 0.5),
+    ]
+    assert rows[0]["created_at"].endswith("Z") and rows[0]["judge_model"] == "j"
+    assert (await store.list_evals("r2"))[0]["error"] == "judge unreachable"
+    assert await store.list_evals("none") == []
