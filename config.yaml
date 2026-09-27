@@ -6,7 +6,7 @@ limits:
   max_tool_calls: 12        # tool executions per run
   max_run_seconds: 120      # per segment (start or resume); time waiting for approval is not counted
   max_repeat_calls: 2       # same tool + same args allowed this many times
-  max_repairs: 2            # consecutive malformed LLM replies before the run fails
+  max_repairs: 2            # malformed LLM replies repaired in a row; the next one fails the run
   max_calls_per_reply: 3    # tool calls allowed in one LLM reply
   max_incidents_per_run: 1
 
@@ -44,7 +44,7 @@ output:
   max_tool_result_chars: 4000
 
 eval:
-  golden_set: eval/kb_golden.jsonl
+  golden_set: evals/kb_golden.jsonl   # relative to the repo root
   online_default: true
   relevancy_strictness: 1
   thresholds:

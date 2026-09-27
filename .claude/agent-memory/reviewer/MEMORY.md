@@ -1,0 +1,2 @@
+- [Private name leak check](project_private-name.md) — plan file names a private project; grep changed files for it every review
+- [Drift hotspots](feedback_drift-hotspots.md) — golden-set path, max_repairs boundary, approval vs cancel, attention levels, audit events, ADR status-note pattern

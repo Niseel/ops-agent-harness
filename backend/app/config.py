@@ -124,7 +124,7 @@ class EvalThresholds(Strict):
 
 
 class Eval(Strict):
-    golden_set: str = "eval/kb_golden.jsonl"
+    golden_set: str = "evals/kb_golden.jsonl"  # relative to the repo root
     online_default: bool = True
     relevancy_strictness: int = 1
     thresholds: EvalThresholds = EvalThresholds()
