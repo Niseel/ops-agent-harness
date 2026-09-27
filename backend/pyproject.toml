@@ -12,6 +12,9 @@ dependencies = [
     "langgraph>=1.2.12,<2",
     "langgraph-checkpoint-sqlite>=3.1.1,<4",
     "qdrant-client>=1.19.1,<2",
+    "ragas>=0.4.3,<0.5",
+    "instructor>=1.17.0,<2",
+    "langchain-community>=0.4.1,<0.4.2",
 ]
 
 [dependency-groups]
@@ -19,6 +22,9 @@ dev = ["pytest", "pytest-asyncio", "httpx2", "ruff"]
 
 [tool.uv]
 package = false
+# instructor 1.17.0 (pulled by ragas) pins jiter<0.15, openai 3.19.2 needs >=0.16. instructor only uses
+# jiter.from_json for streamed partial parsing, which the judge never does. Drop when instructor lifts the pin.
+override-dependencies = ["jiter>=0.16,<1"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

@@ -104,7 +104,7 @@ The knowledge base lives in Qdrant, collection `ops_kb`: one point per runbook s
 | Prompt injection in tool output | Tool output is untrusted data in the prompt; the approval gate is the hard stop |
 | Clients asking for more | Limits clamped to `config.yaml`; fault injection only when `ALLOW_FAULT_INJECTION=true` (on by default for local use) |
 | Leaking secrets | Secret values masked in logs and events; never returned by the API |
-| Data sent to external models | Local by default (fake LLM, LM Studio); fixtures are synthetic; cloud providers only when `LLM_*`, `EMBED_*` or `JUDGE_*` point at them |
+| Data sent to external models | Local by default (fake LLM, LM Studio); fixtures are synthetic; cloud providers only when `LLM_*`, `EMBED_*` or `JUDGE_*` point at them; RAGAS usage analytics are off (`RAGAS_DO_NOT_TRACK=true`) |
 | Run state sent to a tracing service | LangGraph installs the LangSmith client, but its tracing is off unless `LANGSMITH_TRACING=true` is set; the harness never sets it |
 
 ## 5. Observability
@@ -134,7 +134,7 @@ Two sources ([backend/app/config.py](../backend/app/config.py)):
 | `JUDGE_BASE_URL` | empty (reuse `LLM_BASE_URL`) | RAGAS judge endpoint |
 | `JUDGE_API_KEY` | empty (reuse `LLM_API_KEY`) | Key for the judge |
 | `JUDGE_MODEL` | empty (reuse `LLM_MODEL`) | Judge model; use a strong one for numbers you report |
-| `JUDGE_JSON_MODE` | `json_schema` | How the judge is forced to return JSON: `json_schema`, `json`, `md_json`, `tools` |
+| `JUDGE_JSON_MODE` | `json_schema` | How the judge is forced to return JSON: `json_schema`, `json`, `md_json`, `tools` (another value stops the app at startup) |
 | `QDRANT_URL` | `http://localhost:6333` | Qdrant server |
 | `QDRANT_API_KEY` | empty | Qdrant Cloud key |
 | `DB_PATH` | `data/harness.db` | SQLite file for state, history and the mock incident system |

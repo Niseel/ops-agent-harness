@@ -150,3 +150,15 @@ async def test_approvals_table_has_adr_0004_columns_and_unique_constraint(store)
 async def test_update_unknown_run_raises(store):
     with pytest.raises(LookupError):
         await store.update_run("missing", status="completed")
+
+
+async def test_latest_eval_report_round_trip(store):
+    assert await store.latest_eval_report() is None
+    old = {"id": "a", "created_at": "2026-09-27T09:00:00.000Z", "models": {}, "config": {}, "summary": {}, "rows": []}
+    new = {**old, "id": "b", "created_at": "2026-09-27T10:00:00.000Z", "rows": [{"mode": "hybrid", "hit@3": 1.0}]}
+    same_time = {**new, "id": "c"}
+    await store.insert_eval_report(old)
+    await store.insert_eval_report(new)
+    assert await store.latest_eval_report() == new
+    await store.insert_eval_report(same_time)
+    assert (await store.latest_eval_report())["id"] == "c"  # same created_at: the last one inserted

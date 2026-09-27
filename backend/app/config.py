@@ -35,7 +35,7 @@ class Settings(BaseSettings):
     judge_base_url: str = ""
     judge_api_key: str = ""
     judge_model: str = ""
-    judge_json_mode: str = "json_schema"  # instructor mode: json_schema | json | md_json | tools
+    judge_json_mode: Literal["json_schema", "json", "md_json", "tools"] = "json_schema"  # instructor mode
 
     qdrant_url: str = "http://localhost:6333"
     qdrant_api_key: str = ""

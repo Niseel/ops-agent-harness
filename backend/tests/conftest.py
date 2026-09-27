@@ -7,6 +7,7 @@ import pytest
 from qdrant_client import AsyncQdrantClient
 
 from app.config import cfg, settings
+from app.eval.metrics import RagasJudge
 from app.harness.runner import Runner
 from app.harness.store import Store
 from app.harness.tracer import Tracer
@@ -132,3 +133,48 @@ async def live_embedder():
 def search(kb):
     """The real search_knowledge_base on the in-memory knowledge base."""
     return kb
+
+
+# --- M2 T3: judge doubles -------------------------------------------------------------------
+
+
+class FakeJudge:
+    """Scores every metric 0.9 unless told otherwise; `calls` records (metric, args)."""
+
+    model = "fake-judge"
+
+    def __init__(self, scores: dict | None = None, reachable: bool = True, errors: dict | None = None) -> None:
+        self.scores, self.is_reachable, self.errors = scores or {}, reachable, errors or {}
+        self.calls: list[tuple[str, tuple]] = []
+
+    async def reachable(self) -> bool:
+        return self.is_reachable
+
+    async def _score(self, metric: str, *args) -> float:
+        self.calls.append((metric, args))
+        if metric in self.errors:
+            raise self.errors[metric]
+        return self.scores.get(metric, 0.9)
+
+    async def context_precision(self, question, reference, contexts):
+        return await self._score("context_precision", question, reference, contexts)
+
+    async def context_recall(self, question, reference, contexts):
+        return await self._score("context_recall", question, reference, contexts)
+
+    async def context_relevance(self, query, contexts):
+        return await self._score("context_relevance", query, contexts)
+
+    async def faithfulness(self, question, answer, contexts):
+        return await self._score("faithfulness", question, answer, contexts)
+
+    async def answer_relevancy(self, question, answer):
+        return await self._score("answer_relevancy", question, answer)
+
+
+@pytest.fixture
+async def live_judge():
+    judge = RagasJudge.from_settings()
+    if not await judge.reachable():
+        pytest.skip("no judge endpoint")
+    return judge

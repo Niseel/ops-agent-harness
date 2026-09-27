@@ -57,3 +57,9 @@ Found in the M2 T2 review (2026-09-27):
 
 - Output-model caps that mirror a config value (`SearchOutput.results` max 3 vs `cfg.kb.top_n`, no bound in config.py) turn a config edit into `bad_output` on every call. Check each strict output cap against the config key that feeds it; bound the key in config.py or pass the cap explicitly.
 - Run-level "never surfaces X" tests that skip non-`ok` envelopes pass vacuously if the tool fails; ask for an assert that at least one `ok` result was checked.
+
+Found in the M2 T3 review (2026-09-27), carry into T4/M3:
+
+- `RagasJudge.metrics()` imports ragas synchronously on the first metric call (~1.5 s warm, more cold). In M3 that stalls the API event loop (SSE, other requests) once per process. Check M3 warms it off the loop (`asyncio.to_thread`) or accepts it in writing.
+- Golden search uses `limit=10` sections, but the KB has only 8 docs, so "MRR@10 over the first 10 distinct doc_ids" (spec wording) really means "doc_ids in the first 10 hits". Re-check if the KB or limit changes.
+- Probes that paid off: build the metrics with `socket.connect`/`getaddrinfo` blocked (no network, `do_not_track()` True); `uv lock --check` after an override; grep instructor for `jiter` to verify override claims.
