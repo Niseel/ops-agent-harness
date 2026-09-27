@@ -1,6 +1,6 @@
 # 0018. Adopt the AI-SDLC workflow
 
-Status: Accepted · Date: 2026-09-27
+Status: Accepted · Date: 2026-09-27 · `/feature` adapted: the main agent codes, one commit per task, planner checks each milestone plan
 
 ## Context
 

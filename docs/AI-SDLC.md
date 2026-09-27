@@ -47,11 +47,13 @@ Approve the plan (gate 1) and the commit (gate 2). Nothing pushes automatically.
 | Test | backend/tests/, frontend specs, evals/*.json scenarios graded by evals/check.sh |
 | Deploy | one PR per milestone (.github/pull_request_template.md), CI in .github/workflows/ci.yml |
 
-How a milestone runs:
-1. Gate 1: the owner approves plans/mN-*.md.
+How a milestone runs (the owner starts it with `/feature plans/mN-*.md`):
+1. The planner subagent checks the plan against the spec, ADRs and code. Gate 1: the owner approves it.
 2. For each task: the main agent writes code and tests, the tester subagent checks the acceptance criteria, the reviewer subagent reviews the diff, and both verdicts go into the plan's Pipeline log. Gate 2: the owner approves, then the agent commits.
 3. The owner pushes the branch, the agent opens the PR, the owner reviews and merges.
 
-The main agent writes the code itself instead of delegating to the coder subagent: it already holds the context, and the tester and reviewer still give an independent check.
+The main agent writes the code itself instead of delegating to the coder subagent: it already holds the context, and the tester and reviewer still give an independent check. `.claude/skills/feature/SKILL.md` is adapted for this and for one commit per task.
+
+M0 ran the stages by hand: `intent/ops-agent-harness.md` and `specs/ops-agent-harness.md` were written by hand in the template format, from the brief and the owner's answers, instead of through `/intent` and `/spec`. `/intent` and `/spec` are for changes after the first release.
 
 Re-running `ai-sdlc-starter --adopt` refreshes the managed blocks in CLAUDE.md and AGENTS.md and brings back the bilingual text.

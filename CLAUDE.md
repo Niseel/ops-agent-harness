@@ -31,6 +31,7 @@ cd backend && uv run ruff format --check . # format (drop --check to fix)
 Frontend and eval commands are added by the milestone that introduces them.
 
 ### Rules
+- A milestone starts when the owner runs `/feature plans/mN-*.md`; follow that skill's phases.
 - Work one plan task at a time. One task = one commit on the milestone branch. Stop after each commit for human review.
 - Before coding a task, invoke every skill in the task's Skills column (Skill tool) and note them in the Pipeline log. Default: `ai-engineer` for LLM, loop, tool, knowledge-base and evaluation work; `secure-api-review` for anything under `/api`.
 - Before each commit, run the `tester` and `reviewer` subagents on the task and log their verdicts in the plan's Pipeline log.

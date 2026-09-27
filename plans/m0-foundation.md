@@ -58,3 +58,4 @@ Everything a reviewer or a coding agent needs before any harness code: project s
 | Skills audit | gap found by the owner | T7 invoked `secure-api-review`. T4 and T6 listed `ai-engineer` but did not invoke it; the reviewer subagent had both skills preloaded (confirmed). Fixed by a retro pass below |
 | Retro: ai-engineer | invoked on spec + DESIGN | gaps fixed: token usage, latency and prompt hash per LLM call; data sent to external models and no PII handling stated; system prompt rules in the spec; fallback model and PII redaction as future work |
 | Retro review | APPROVE | Postman demo checks `usage`; one `llm` event per attempt; `effort: xhigh` is supported by Sonnet 5 (docs: unsupported levels fall back to the highest supported one) |
+| /feature adaptation review | APPROVE | minors fixed: stop after each commit, branch from an unmerged previous milestone only after asking, verifier mismatch path, no attribution lines |

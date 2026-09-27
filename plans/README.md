@@ -28,6 +28,7 @@ How the work in [specs/ops-agent-harness.md](../specs/ops-agent-harness.md) is s
 
 ## How a milestone runs
 
+0. The owner runs `/feature plans/<file>.md` ([the skill](../.claude/skills/feature/SKILL.md)); the planner subagent checks and updates the plan.
 1. **Gate 1**: the owner approves the milestone plan (status becomes `approved`).
 2. For each task, in order:
    - invoke the skills in the task's Skills column;

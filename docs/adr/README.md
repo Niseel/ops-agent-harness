@@ -22,7 +22,7 @@ One file per decision. Each record says what problem we had, what we considered,
 | [0015](0015-ui-run-console-not-chat.md) | UI concept: run console with approval inbox, not a chat | Accepted |
 | [0016](0016-ui-angular.md) | UI tech: Angular | Accepted |
 | [0017](0017-docs-postman-ci.md) | Docs in repo, Postman collection, CI | Accepted (plan doc replaced by 0018) |
-| [0018](0018-adopt-ai-sdlc-workflow.md) | Adopt the AI-SDLC workflow | Accepted |
+| [0018](0018-adopt-ai-sdlc-workflow.md) | Adopt the AI-SDLC workflow | Accepted (`/feature` adapted) |
 
 ## Format
 
