@@ -1,4 +1,4 @@
 - [Private name leak check](project_private-name.md) — plan file names a private project; grep changed files for it every review
 - [Plan review checks](feedback_plan-review-checks.md) — shared files across parallel tasks, unowned API routes, invariants between milestones
 - [Drift hotspots](feedback_drift-hotspots.md) — golden-set path, max_repairs boundary, approval vs cancel, attention levels, audit events, ADR status-note pattern
-- [Code review checks](feedback_code-review-checks.md) — log masking vs JSON escaping, update_run SQL whitelist, live PRAGMA probes, global log.setup in tests
+- [Code review checks](feedback_code-review-checks.md) — log masking, update_run SQL whitelist, PRAGMA probes, FakePlanner arg lengths, empty openai key

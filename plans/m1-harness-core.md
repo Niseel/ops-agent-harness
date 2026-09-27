@@ -248,3 +248,7 @@ None. In round 1 (2026-09-27) the owner accepted both defaults: `t_ms` is Unix e
 | T1 build | done | Skills: `ai-engineer` invoked. `aiosqlite` 0.22.1 added; 20 tests |
 | T1 tester | PASS | 27 tests; added edge cases (mask walks tuples, update_run column whitelist, after_seq, audit events with no run, ADR 0004 schema and UNIQUE) |
 | T1 reviewer | APPROVE | MINOR fixed: log masking also finds JSON-escaped secrets; `update_run` on an unknown run raises. NITs: `foreign_keys=ON` kept (matches ADR 0004 references); root log handlers restored after each test; shared event dict left for M3. 29 tests |
+| T1 commit | 74537af | draft PR #2 opened at the owner's request |
+| T2 build | done | Skills: `ai-engineer` invoked. `openai` 3.19.2 added; 35 tests |
+| T2 tester | PASS | 43 tests; added input-limit, one-incident, short objective, punctuation, not_found, search error, objective position and SDK `max_retries`/`tools` cases |
+| T2 reviewer | APPROVE | MINOR fixed: incident description capped at 2000 chars (long doc id); empty `LLM_API_KEY` accepted for keyless local servers. NITs: no double period in the rejection answer; first hyphenated word wins (note for M5 scenarios); SDK client built in `__init__`, T6 builds one per process. 44 tests |
