@@ -5,6 +5,7 @@ from typing import Literal
 
 from pydantic import Field
 
+from app.clock import ISO_PATTERN
 from app.config import Strict, settings
 from app.tools import Tool, ToolContext, ToolError
 
@@ -18,7 +19,7 @@ class StatusOutput(Strict):
     status: Literal["operational", "degraded", "down"]
     latency_p95_ms: int = Field(ge=0)
     error_rate: float = Field(ge=0, le=1)
-    updated_at: str
+    updated_at: str = Field(pattern=ISO_PATTERN)
 
 
 async def get_service_status(args: StatusInput, ctx: ToolContext) -> dict:

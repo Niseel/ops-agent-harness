@@ -10,7 +10,8 @@ import time
 from collections import defaultdict
 from typing import Any
 
-from app.harness.store import Store, now_iso
+from app.clock import now_iso
+from app.harness.store import Store
 
 log = logging.getLogger("app.trace")
 _LEVELS = {"error": logging.ERROR, "warn": logging.WARNING}

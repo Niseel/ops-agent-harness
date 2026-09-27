@@ -53,7 +53,7 @@ async def test_status_returns_fixture_record(tracer, store):
             "status": "degraded",
             "latency_p95_ms": 2400,
             "error_rate": 0.12,
-            "updated_at": "2026-09-27T09:00:00Z",
+            "updated_at": "2026-09-27T09:00:00.000Z",
         },
     }
     [event] = await events(store, "tool")
@@ -239,7 +239,7 @@ async def test_long_output_truncated(tracer, store, monkeypatch):
                 "status": "degraded",
                 "latency_p95_ms": 2400,
                 "error_rate": 0.12,
-                "updated_at": "2026-09-27T09:00:00Z",
+                "updated_at": "2026-09-27T09:00:00.000Z",
             }
         )[:40]
     )
@@ -291,7 +291,7 @@ async def test_incident_output_model_rejects_bad_incident_id(tracer, store, monk
     tool = registry.TOOLS["create_incident"]
 
     async def bad_run(args, ctx):
-        return {"incident_id": "not-a-valid-id", "status": "open", "created_at": "2026-09-27T09:00:00Z"}
+        return {"incident_id": "not-a-valid-id", "status": "open", "created_at": "2026-09-27T09:00:00.000Z"}
 
     monkeypatch.setitem(registry.TOOLS, tool.name, replace(tool, run=bad_run))
     envelope, attempts = await call(tracer, store, "create_incident", INCIDENT, decision=APPROVE)
@@ -307,7 +307,7 @@ async def test_truncation_boundary_exact_length_not_truncated(tracer, store, mon
             "status": "degraded",
             "latency_p95_ms": 2400,
             "error_rate": 0.12,
-            "updated_at": "2026-09-27T09:00:00Z",
+            "updated_at": "2026-09-27T09:00:00.000Z",
         }
     )
     monkeypatch.setattr(cfg.output, "max_tool_result_chars", len(text))

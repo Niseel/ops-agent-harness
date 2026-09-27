@@ -16,12 +16,13 @@ from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.errors import GraphRecursionError
 
+from app.clock import now_iso
 from app.config import settings
 from app.harness import policy
 from app.harness.loop import STATUS_BY_ERROR, RunContext, build_graph
 from app.harness.policy import RunOptions
 from app.harness.state import AgentState, RunStatus
-from app.harness.store import Store, now_iso
+from app.harness.store import Store
 from app.harness.tracer import Tracer
 from app.llm.fake import FakePlanner
 from app.llm.openai_compat import OpenAICompatClient

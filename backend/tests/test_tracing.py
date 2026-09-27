@@ -1,11 +1,13 @@
 import json
 import logging
+import re
+from pathlib import Path
 
 import pytest
 from conftest import SECRET
 
 from app import log
-from app.harness.store import now_iso
+from app.clock import ISO_PATTERN, now_iso
 from app.llm.fake import ScriptedLLM, calls, final, raw
 
 
@@ -143,3 +145,78 @@ async def test_one_done_event_per_run(runner, items, limits, status, attention):
     done = [e for e in await runner.store.list_events(run["id"]) if e["kind"] == "done"]
     assert [(e["status"], e["attention"]) for e in done] == [(status, attention)]
     assert done[0]["seq"] == max(e["seq"] for e in await runner.store.list_events(run["id"]))
+
+
+# --- one timestamp format (app/clock.py) ------------------------------------------------------
+
+ISO = re.compile(ISO_PATTERN)
+
+
+def test_now_iso_is_the_project_format():
+    assert ISO.match(now_iso())
+    assert now_iso(0) == "1970-01-01T00:00:00.000Z"
+    assert now_iso(1790506537.0745) == "2026-09-27T10:55:37.074Z"
+
+
+def test_now_iso_truncates_sub_millisecond_precision():
+    # .0995s is 99.5ms: truncated to .099, not rounded up to .100 (which could roll into the next second).
+    assert now_iso(1790506537.0995) == "2026-09-27T10:55:37.099Z"
+    assert now_iso(0.9999) == "1970-01-01T00:00:00.999Z"
+
+
+@pytest.mark.parametrize("fmt", ["json", "text"])
+def test_log_lines_use_the_project_format(capsys, fmt):
+    log.setup("INFO", fmt, [])
+    logging.getLogger("app.test").info("hello")
+    out = capsys.readouterr().out.strip().splitlines()[-1]
+    ts = json.loads(out)["ts"] if fmt == "json" else out.split(" ", 1)[0]
+    assert ISO.match(ts), ts
+
+
+def test_secrets_masked_in_text_formatter_too(capsys):
+    log.setup("INFO", "text", [SECRET])
+    logging.getLogger("app.test").info("key %s used", SECRET)
+    out = capsys.readouterr().out.strip().splitlines()[-1]
+    assert SECRET not in out
+    assert "key *** used" in out
+    assert ISO.match(out.split(" ", 1)[0])
+
+
+async def test_stored_timestamps_use_the_project_format(runner, search):
+    run = await runner.create_run("orders-db is down. Open an incident.")
+    await runner.run_segment(run["id"])
+    row = await runner.store.get_run(run["id"])
+    stamps = [row["created_at"], row["updated_at"]]
+    stamps += [e["created_at"] for e in await runner.store.list_events(run["id"])]
+    incident = await runner.store.create_incident(
+        idempotency_key="k1",
+        run_id=run["id"],
+        title="orders-db is down",
+        description="All queries fail.",
+        severity="SEV1",
+    )
+    stamps.append(incident["created_at"])
+    assert all(ISO.match(s) for s in stamps), stamps
+
+
+async def test_finished_at_of_a_completed_run_uses_the_project_format(runner, search):
+    run = await runner.create_run("Why is payments-api slow?")
+    status = await runner.run_segment(run["id"])
+    row = await runner.store.get_run(run["id"])
+    assert status == "completed"
+    assert row["finished_at"] is not None and ISO.match(row["finished_at"])
+
+
+def test_only_clock_formats_timestamps():
+    # One place makes timestamps; anywhere else would drift from the project format.
+    app = Path(__file__).resolve().parents[1] / "app"
+    # fromisoformat( parses, it does not format, so it is allowed.
+    pattern = re.compile(
+        r"(?<!from)isoformat\(|strftime\(|datetime\.now\(|utcnow\(|fromtimestamp\(|\b(ctime|asctime|gmtime|localtime)\("
+    )
+    offenders = [
+        str(p.relative_to(app))
+        for p in app.rglob("*.py")
+        if p.relative_to(app) != Path("clock.py") and pattern.search(p.read_text())
+    ]
+    assert offenders == []

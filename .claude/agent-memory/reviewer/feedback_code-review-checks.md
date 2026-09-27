@@ -39,5 +39,9 @@ Found in the M1 T6 review (2026-09-27):
 - The checkpointer's own aiosqlite connection (default isolation level) keeps an open write transaction when a segment is cancelled between `execute` and `commit` in `AsyncSqliteSaver.aput`/`aput_writes` (segment timeout, M3 cancel). Every store write then fails with `database is locked` after busy_timeout, for every run, until the saver commits again. Probe: `create_task(saver.aput(...))`, cancel after 1 loop tick, check `conn.in_transaction`. Fix: `aiosqlite.connect(db_path, isolation_level=None)` for the saver too. Re-check whenever a new connection or cancel path is added (M3 cancel, M4 SSE).
 - LangGraph pulls langsmith through langchain-core: `LANGSMITH_TRACING=true` in the environment would ship run state to LangSmith. Nothing enables it; check it stays documented or forced off.
 
+Found in the M1 owner timestamp fix review (2026-09-27):
+
+- One format rule: every harness timestamp comes from `app/clock.py:now_iso` (`...T09:00:00.123Z`), guarded by a regex test in test_tracing.py. The regex also matches `fromisoformat(` (parsing), so M3 approval expiry should compare `expires_at` as text against `now_iso()` or add a parse helper to clock.py. Fixture data (`data/services.json` `updated_at` has no ms) is outside the rule; check new fixtures and DESIGN §3 wording stay consistent.
+
 **Why:** the tester runs the listed tests; these gaps pass them.
 **How to apply:** on every review touching logging, SQL or the tracer, run the probes above in the scratchpad. See also [[spec-adr-config-drift-hotspots]].

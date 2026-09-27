@@ -128,12 +128,12 @@ Taken from the spec, the ADRs, the comments in config.yaml and the Postman demos
 - `data/services.json`; the tool returns the matching record as is and the output model checks it:
   ```json
   [
-    {"service": "payments-api", "status": "degraded", "latency_p95_ms": 2400, "error_rate": 0.12, "updated_at": "2026-09-27T09:00:00Z"},
-    {"service": "auth-service", "status": "operational", "latency_p95_ms": 85, "error_rate": 0.001, "updated_at": "2026-09-27T09:00:00Z"},
-    {"service": "orders-db", "status": "down", "latency_p95_ms": 30000, "error_rate": 1.0, "updated_at": "2026-09-27T09:00:00Z"},
-    {"service": "search-api", "status": "operational", "latency_p95_ms": 120, "error_rate": 0.002, "updated_at": "2026-09-27T09:00:00Z"},
-    {"service": "notifications-worker", "status": "operational", "latency_p95_ms": 300, "error_rate": 0.0, "updated_at": "2026-09-27T09:00:00Z"},
-    {"service": "inventory-service", "status": "operational", "latency_p95_ms": 95, "error_rate": 0.004, "updated_at": "2026-09-27T09:00:00Z"}
+    {"service": "payments-api", "status": "degraded", "latency_p95_ms": 2400, "error_rate": 0.12, "updated_at": "2026-09-27T09:00:00.000Z"},
+    {"service": "auth-service", "status": "operational", "latency_p95_ms": 85, "error_rate": 0.001, "updated_at": "2026-09-27T09:00:00.000Z"},
+    {"service": "orders-db", "status": "down", "latency_p95_ms": 30000, "error_rate": 1.0, "updated_at": "2026-09-27T09:00:00.000Z"},
+    {"service": "search-api", "status": "operational", "latency_p95_ms": 120, "error_rate": 0.002, "updated_at": "2026-09-27T09:00:00.000Z"},
+    {"service": "notifications-worker", "status": "operational", "latency_p95_ms": 300, "error_rate": 0.0, "updated_at": "2026-09-27T09:00:00.000Z"},
+    {"service": "inventory-service", "status": "operational", "latency_p95_ms": 95, "error_rate": 0.004, "updated_at": "2026-09-27T09:00:00.000Z"}
   ]
   ```
 - Output models: status `{service, status: operational|degraded|down, latency_p95_ms: int >= 0, error_rate: float 0–1, updated_at: str}`; incident `{incident_id, status: "open", created_at}` with `incident_id = "INC-"` + 8 upper-case hex characters.
@@ -271,3 +271,6 @@ None. In round 1 (2026-09-27) the owner accepted both defaults: `t_ms` is Unix e
 | T6 re-review | APPROVE | All five findings checked as fixed; 212 tests |
 | T6 commit | acb7304 | |
 | Phase 4 | done | Every Proof test name exists in the suite; plans/README.md status `done`; PR #2 description completed |
+| Owner review fix | done | Owner, walkthrough of PR #2: log lines used `+00:00`, tables and events `Z`. One format from `app/clock.py:now_iso` everywhere (tables, events, JSON and text logs); ruff `DTZ`; a test refuses date formatting outside `clock.py`; DESIGN §3, CONTRIBUTING and CLAUDE.md state the rule. 217 tests |
+| Owner fix tester | PASS | 220 tests; added sub-millisecond truncation, secrets masked by the text formatter, `finished_at` format; the guard test was shown to catch a new `datetime.now().isoformat()` in a copy of `app/` |
+| Owner fix reviewer | APPROVE | MINOR fixed: fixture `updated_at` values get milliseconds (`09:00:00.000Z`), and the status and incident output models check timestamps with `app.clock.ISO_PATTERN`; the guard allows `fromisoformat(`. NITs fixed: guard also refuses `time.ctime/asctime/gmtime/localtime`; only `app/clock.py` is exempt. 220 tests |

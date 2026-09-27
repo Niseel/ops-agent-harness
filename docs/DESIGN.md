@@ -74,7 +74,7 @@ eval_reports              golden-set runs, not tied to a run
 | `eval_reports` | `id`, `created_at`, `models_json`, `config_json`, `summary_json`, `rows_json` | Offline golden-set reports, compared across runs |
 | `incidents` | `id`, `idempotency_key` (unique), `run_id`, `title`, `description`, `severity`, `status` | The mock external system. A retried call returns the same incident |
 
-All timestamps are ISO-8601 UTC with milliseconds.
+All timestamps in tables, events, logs, API responses and fixtures are ISO-8601 UTC with milliseconds and a `Z` suffix, for example `2026-09-27T09:00:00.123Z`. They come from one function, `app/clock.py:now_iso`, so they sort correctly as text.
 
 Run statuses: `running`, `awaiting_approval`, `completed`, `failed`, `limit_exceeded`, `timed_out`, `cancelled`, `interrupted`. Approval statuses: `pending`, `approved`, `rejected`, `edited`, `expired`, `cancelled`.
 

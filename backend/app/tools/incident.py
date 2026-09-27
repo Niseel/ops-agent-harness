@@ -4,6 +4,7 @@ from typing import Literal
 
 from pydantic import Field
 
+from app.clock import ISO_PATTERN
 from app.config import Strict
 from app.tools import Tool, ToolContext
 
@@ -17,7 +18,7 @@ class IncidentInput(Strict):
 class IncidentOutput(Strict):
     incident_id: str = Field(pattern=r"^INC-[0-9A-F]{8}$")
     status: Literal["open"]
-    created_at: str
+    created_at: str = Field(pattern=ISO_PATTERN)
 
 
 async def create_incident(args: IncidentInput, ctx: ToolContext) -> dict:

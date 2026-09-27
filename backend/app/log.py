@@ -9,7 +9,8 @@ the whole line, exception text included.
 import json
 import logging
 import sys
-from datetime import UTC, datetime
+
+from app.clock import now_iso
 
 FIELDS = ("run_id", "node", "tool", "attempt", "seq", "kind", "status", "attention", "data")
 
@@ -17,7 +18,7 @@ FIELDS = ("run_id", "node", "tool", "attempt", "seq", "kind", "status", "attenti
 class JsonFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
         out = {
-            "ts": datetime.fromtimestamp(record.created, UTC).isoformat(timespec="milliseconds"),
+            "ts": now_iso(record.created),
             "level": record.levelname,
             "logger": record.name,
             "msg": record.getMessage(),
@@ -26,6 +27,14 @@ class JsonFormatter(logging.Formatter):
         if record.exc_info:
             out["exc"] = self.formatException(record.exc_info)
         return json.dumps(out, default=str, ensure_ascii=False)
+
+
+class TextFormatter(logging.Formatter):
+    def __init__(self) -> None:
+        super().__init__("%(asctime)s %(levelname)s %(name)s: %(message)s")
+
+    def formatTime(self, record: logging.LogRecord, datefmt: str | None = None) -> str:
+        return now_iso(record.created)  # the project format, not local time
 
 
 class _Masked(logging.Formatter):
@@ -46,7 +55,7 @@ class _Masked(logging.Formatter):
 
 
 def setup(level: str, fmt: str, secrets: list[str]) -> None:
-    inner = JsonFormatter() if fmt == "json" else logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
+    inner = JsonFormatter() if fmt == "json" else TextFormatter()
     handler = logging.StreamHandler(sys.stdout)
     handler.setFormatter(_Masked(inner, secrets))
     logging.basicConfig(level=level, handlers=[handler], force=True)

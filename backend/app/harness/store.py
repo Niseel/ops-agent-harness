@@ -7,11 +7,12 @@ leaves a transaction open; WAL lets readers run during the one write.
 
 import json
 import uuid
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import aiosqlite
+
+from app.clock import now_iso
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS runs (
@@ -91,12 +92,6 @@ CREATE TABLE IF NOT EXISTS incidents (
 
 # Columns update_run may change. Column names never come from callers unchecked.
 _RUN_FIELDS = {"status", "final", "error", "steps", "tool_calls", "finished_at", "options"}
-
-
-def now_iso(ts: float | None = None) -> str:
-    """ISO-8601 UTC with milliseconds, e.g. 2026-09-27T09:00:00.123Z. Sorts correctly as text."""
-    moment = datetime.fromtimestamp(ts, UTC) if ts is not None else datetime.now(UTC)
-    return moment.isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
 class Store:
