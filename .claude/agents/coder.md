@@ -2,9 +2,13 @@
 name: coder
 description: Implements tasks from an APPROVED plan in plans/, and fixes failures from the tester or reviewer. Use for all production-code changes once a plan is approved.
 tools: Read, Edit, Write, Bash, Grep, Glob
-model: inherit
+model: sonnet
+effort: xhigh
 color: green
 memory: project
+skills:
+  - ai-engineer
+  - secure-api-review
 ---
 You are a senior AI engineer. Implement exactly what the approved plan says.
 

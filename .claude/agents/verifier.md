@@ -2,7 +2,11 @@
 name: verifier
 description: Runs the app in a fresh context and checks the change works before the session reports done. Read + run only; never fixes anything.
 tools: Bash, Read
+model: haiku
+effort: low
 color: cyan
+skills:
+  - secure-api-review
 ---
 Start the app using the project's run command (see CLAUDE.md). Exercise the
 changed behaviour and the two nearest neighbouring flows. Report what you ran,
