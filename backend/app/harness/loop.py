@@ -21,7 +21,7 @@ from app.harness.policy import check_calls
 from app.harness.state import AgentState, RunStatus
 from app.harness.store import Store
 from app.harness.tracer import Tracer
-from app.tools.faults import Faults
+from app.tools.faults import EmbedCounter, Faults
 from app.tools.registry import TOOLS, openai_tools
 
 # The complete list of run error codes and the status each one gives (plan: Final status).
@@ -136,6 +136,7 @@ async def tools(state: AgentState, runtime: Runtime[RunContext]) -> dict:
     ctx = runtime.context
     await _stage(ctx, "tools", f"{len(state['pending'])} call(s)")
     attempts, tool_calls, incidents = dict(state["tool_attempts"]), state["tool_calls"], state["incidents"]
+    embed = EmbedCounter(ctx.faults.embeddings, state["embed_attempts"])  # shared by every call of this node run
     messages = []
     for call in state["pending"]:
         name = call["name"]
@@ -151,6 +152,7 @@ async def tools(state: AgentState, runtime: Runtime[RunContext]) -> dict:
                 fault=ctx.faults.for_tool(name),
                 store=ctx.store,
                 tracer=ctx.tracer,
+                embed=embed,
             )
             attempts[name] = attempts.get(name, 0) + made
             tool_calls += made > 0  # refused by the gateway: not an execution
@@ -165,6 +167,7 @@ async def tools(state: AgentState, runtime: Runtime[RunContext]) -> dict:
         "tool_attempts": attempts,
         "tool_calls": tool_calls,
         "incidents": incidents,
+        "embed_attempts": embed.attempts,
     }
 
 

@@ -52,3 +52,8 @@ Found in the M2 T1 review (2026-09-27), carry into T2/T3/M3:
 - `content_hash` covers docs + embed model only (plan-pinned): a change to `cfg.bm25` or the tokenizer never reindexes, and M3 `cli ingest` has no force flag. Re-check when M3 adds the CLI.
 - Lifespan code catches every Exception and logs; a startup test that only checks "no rebuild" passes even when ingest failed. Ask for a caplog assert on the success line.
 - Vendor-note margin with the fake embedder (probe script: search each plain objective with limit=24): best rank 5 in sparse, 8 in hybrid. Re-probe if data/kb or the objectives list change.
+
+Found in the M2 T2 review (2026-09-27):
+
+- Output-model caps that mirror a config value (`SearchOutput.results` max 3 vs `cfg.kb.top_n`, no bound in config.py) turn a config edit into `bad_output` on every call. Check each strict output cap against the config key that feeds it; bound the key in config.py or pass the cap explicitly.
+- Run-level "never surfaces X" tests that skip non-`ok` envelopes pass vacuously if the tool fails; ask for an assert that at least one `ok` result was checked.

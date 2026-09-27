@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -106,7 +106,7 @@ class KB(Strict):
     top_k_dense: int = 10
     top_k_bm25: int = 10
     rrf_k: int = 60
-    top_n: int = 3
+    top_n: int = Field(3, ge=1, le=3)  # the search tool returns at most 3 results
     embed_timeout_s: float = 2.0  # query embedding; slower counts as failed
 
 

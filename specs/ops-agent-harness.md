@@ -119,7 +119,7 @@ Registry: one entry per tool with name, description, Pydantic input and output m
 
 | Tool | Input | Output | Notes |
 |---|---|---|---|
-| `search_knowledge_base` | `query`: 3–200 chars | `results`: up to 3 of `{doc_id, title, section, snippet, score, ranks: {dense, bm25, rrf}}`; `mode`: `hybrid` or `sparse_only` | Hybrid RAG ([0005](../docs/adr/0005-kb-search-hybrid-rag.md)). Qdrant down → `unavailable`. |
+| `search_knowledge_base` | `query`: 3–200 chars | `results`: up to 3 of `{doc_id, title, section, snippet, score, ranks: {dense, bm25, rrf}}`; `mode`: `hybrid` or `sparse_only` | Hybrid RAG ([0005](../docs/adr/0005-kb-search-hybrid-rag.md)). Qdrant down → `unavailable`. `snippet` is the first 400 characters of the section. |
 | `get_service_status` | `service_name`: `^[a-z0-9][a-z0-9-]{1,49}$` | `{service, status: operational\|degraded\|down, latency_p95_ms, error_rate, updated_at}` | Reads `data/services.json`. Unknown service → `not_found`. |
 | `create_incident` | `title`: 5–120 chars, `description`: 10–2000 chars, `severity`: `SEV1`–`SEV4` | `{incident_id, status: open, created_at}` | Needs approval ([0009](../docs/adr/0009-human-approval-interrupt.md)). The gateway adds `idempotency_key = run_id:tool_call_id`, hidden from the LLM. A known key returns the existing incident. |
 
@@ -244,7 +244,7 @@ SQLite file `DB_PATH` ([0004](../docs/adr/0004-state-and-database-sqlite.md)): L
 - Ingest (at startup and `cli ingest`): split `data/kb/*.md` by `##` section; embed each chunk (`EMBED_*`), build BM25 sparse vectors; upsert one Qdrant point per chunk with vectors `dense` and `bm25` (`Modifier.IDF`) and payload `doc_id, title, section, text, content_hash, embed_model`. Skip when the hash of (documents + embedding model) is unchanged; rebuild the collection when it changed. A BM25-only index is never skipped, so the next ingest adds dense vectors once embeddings answer. If embeddings fail, index BM25 only. If Qdrant is down at startup, the API still starts, logs a warning and `/api/health` reports the knowledge base as unavailable.
 - Query: embed the query, run dense and BM25 search in parallel (`kb.top_k_dense`, `kb.top_k_bm25`), fuse with RRF (`kb.rrf_k`), return `kb.top_n`. If embedding fails, BM25 only and `mode = sparse_only`. A query embedding slower than `kb.embed_timeout_s` counts as failed.
 - An internal `mode` parameter (`hybrid`, `dense`, `sparse`) exists for evaluation. The LLM only sees `query`.
-- Sub-steps emit `stage` events with node `kb.embed`, `kb.dense`, `kb.bm25`, `kb.rrf` and their rankings.
+- Sub-steps emit `stage` events with node `kb.embed`, `kb.dense`, `kb.bm25`, `kb.rrf` and their rankings (tool `search_knowledge_base`; `kb.embed` reports `ok`, `failed` or `skipped`).
 
 ### Evaluation
 

@@ -56,8 +56,8 @@ async def test_incident_call_pauses_run_without_incident(runner, search):
     assert [p["name"] for p in state["pending"]] == ["create_incident"]
 
 
-async def test_injected_instruction_stops_at_approval(runner, injected_search):
-    run = await runner.create_run("Check auth-service")
+async def test_injected_instruction_stops_at_approval(runner, search):
+    run = await runner.create_run("SMS alerts from notifications-worker are delayed. Check the SMS vendor note.")
     assert await runner.run_segment(run["id"]) == "awaiting_approval"
     [approval] = await kinds(runner, run["id"], "approval")
     assert approval["data"]["args"]["severity"] == "SEV1"

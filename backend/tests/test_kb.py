@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 import re
 import shutil
@@ -9,12 +10,15 @@ from conftest import FakeEmbedder
 from fastapi.testclient import TestClient
 from qdrant_client import AsyncQdrantClient, models
 
-from app.config import cfg, settings
+from app.config import KB, cfg, settings
+from app.harness import tool_gateway
 from app.kb import qdrant, sparse
 from app.kb.ingest import content_hash, ingest, load_chunks
 from app.kb.qdrant import KnowledgeBase, get_kb, rrf
+from app.llm.fake import ScriptedLLM, calls, final
 from app.llm.openai_compat import OpenAICompatEmbedder
 from app.main import app
+from app.tools.faults import EmbedCounter, EmbeddingsFault
 
 # Captured at import time (before the autouse `no_real_kb` fixture patches the module attribute),
 # so it stays the real, cached `get_kb` for the whole test session.
@@ -404,3 +408,226 @@ async def test_paraphrase_found_by_dense(live_embedder):
         assert found and found[0] <= 3, [(h["doc_id"], h["section"]) for h in search.hits]
     finally:
         await kb.client.close()
+
+
+# --- the search tool (T2) -------------------------------------------------------------------
+
+
+async def search_call(tracer, store, query, *, id="c1", embed=None):
+    call = {"id": id, "name": "search_knowledge_base", "args": {"query": query}}
+    return await tool_gateway.execute(
+        call, run_id="r1", decision=None, attempts_before=0, fault=None, store=store, tracer=tracer, embed=embed
+    )
+
+
+async def test_search_tool_returns_top3_with_ranks(kb, tracer, store):
+    envelope, attempts = await search_call(tracer, store, "orders-db is down. Open an incident.")
+    assert envelope["ok"] and attempts == 1 and "truncated" not in envelope
+    data = envelope["data"]
+    assert data["mode"] == "hybrid" and 1 <= len(data["results"]) <= 3
+    for rank, hit in enumerate(data["results"], start=1):
+        assert hit.keys() == {"doc_id", "title", "section", "snippet", "score", "ranks"}
+        assert hit["ranks"].keys() == {"dense", "bm25", "rrf"} and hit["ranks"]["rrf"] == rank
+        assert len(hit["snippet"]) <= 400 and hit["score"] == round(hit["score"], 4)
+    again, _ = await search_call(tracer, store, "orders-db is down. Open an incident.", id="c2")
+    assert again["data"] == data  # deterministic
+
+
+async def test_snippet_is_the_first_400_characters(tracer, store, tmp_path, monkeypatch):
+    long_text = "\n".join(f"Step {i}: restart the zebrafish relay and wait." for i in range(20))
+    (tmp_path / "runbook-long.md").write_text(f"# Long runbook\n\n## Relay\n\n{long_text}\n")
+    kb = await fresh_kb()
+    try:
+        await ingest(kb, tmp_path)
+        monkeypatch.setattr(qdrant, "get_kb", lambda: kb)
+        envelope, _ = await search_call(tracer, store, "zebrafish relay")
+        [hit] = envelope["data"]["results"]
+        assert len(long_text) > 400 and hit["snippet"] == long_text[:400]  # newlines kept
+    finally:
+        await kb.client.close()
+
+
+async def test_search_emits_stage_events(kb, tracer, store, monkeypatch):
+    await search_call(tracer, store, "What does error 53300 mean?", id="s1c0")
+    events = [e for e in await store.list_events("r1") if e["kind"] == "stage"]
+    assert [(e["node"], e["status"], e["tool"]) for e in events] == [
+        ("kb.embed", "ok", "search_knowledge_base"),
+        ("kb.dense", "ok", "search_knowledge_base"),
+        ("kb.bm25", "ok", "search_knowledge_base"),
+        ("kb.rrf", "ok", "search_knowledge_base"),
+    ]
+    assert all(e["data"]["tool_call_id"] == "s1c0" and e["attention"] is None for e in events)
+    assert events[0]["data"]["model"] == "fake-embed"
+    assert events[2]["data"]["ranking"][0]["doc_id"] == "runbook-orders-db"
+    assert events[2]["data"]["ranking"][0].keys() == {"rank", "doc_id", "section", "score"}
+    assert events[3]["data"]["ranking"][0]["ranks"]["rrf"] == 1
+
+    bm25_only = await fresh_kb(FakeEmbedder(fail=True))
+    try:
+        await ingest(bm25_only, DOCS)
+        monkeypatch.setattr(qdrant, "get_kb", lambda: bm25_only)
+        envelope, _ = await search_call(tracer, store, "What does error 53300 mean?", id="s2c0")
+        assert envelope["data"]["mode"] == "sparse_only"
+        later = [
+            e for e in await store.list_events("r1") if e["kind"] == "stage" and e["data"]["tool_call_id"] == "s2c0"
+        ]
+        assert [(e["node"], e["status"]) for e in later] == [
+            ("kb.embed", "skipped"),
+            ("kb.bm25", "ok"),
+            ("kb.rrf", "ok"),
+        ]
+        [tool_event] = [
+            e for e in await store.list_events("r1") if e["kind"] == "tool" and e["data"]["tool_call_id"] == "s2c0"
+        ]
+        assert tool_event["attention"] == "info"  # spec: search in sparse_only mode
+    finally:
+        await bm25_only.client.close()
+
+
+async def test_embeddings_fault_gives_sparse_only(runner, search):
+    llm = ScriptedLLM(
+        [
+            calls(("search_knowledge_base", {"query": "What does error 53300 mean?"}, "c0")),
+            calls(("search_knowledge_base", {"query": "How do I promote the replica?"}, "c1")),
+            final("done"),
+        ]
+    )
+    run = await runner.create_run("orders-db errors", options={"faults": {"embeddings": {"mode": "error", "times": 1}}})
+    assert await runner.run_segment(run["id"], llm_client=llm) == "completed"
+    state = await runner.get_state(run["id"])
+    results = [json.loads(m["content"]) for m in state["messages"] if m["role"] == "tool"]
+    assert [r["data"]["mode"] for r in results] == ["sparse_only", "hybrid"]
+    assert state["embed_attempts"] == 2
+    events = await runner.store.list_events(run["id"])
+    embeds = [(e["status"], e["data"]["reason"]) for e in events if e["node"] == "kb.embed"]
+    assert embeds == [("failed", "injected fault"), ("ok", None)]
+    tools = [e["attention"] for e in events if e["kind"] == "tool"]
+    assert tools == ["info", None]
+
+
+async def test_embed_counter_counts_every_search_attempt():
+    counter = EmbedCounter(EmbeddingsFault(mode="error", times=2), attempts=1)
+    assert [counter.next_fails() for _ in range(3)] == [True, False, False] and counter.attempts == 4
+    assert EmbedCounter(None, 0).next_fails() is False
+
+
+async def test_qdrant_down_gives_unavailable(kb, tracer, store, monkeypatch):
+    async def down(*args, **kwargs):
+        raise ConnectionError("qdrant refused the connection")
+
+    monkeypatch.setattr(kb.client, "get_collection", down)
+    envelope, attempts = await search_call(tracer, store, "Check payments-api")
+    assert attempts == cfg.tool("search_knowledge_base").max_attempts == 3
+    assert envelope["error"]["type"] == "unavailable" and envelope["error"]["retryable"]
+    events = await store.list_events("r1")
+    assert [e["kind"] for e in events] == ["tool", "retry", "tool", "retry", "tool"]
+    assert events[-1]["attention"] == "error"
+
+
+async def test_retried_search_attempt_embeds_and_counts_again(kb, tracer, store, monkeypatch):
+    # The embed happens before Qdrant is queried, so a query failure that is retried at the
+    # gateway makes `kb.search` run again, and it asks `fail_embed()` again each time.
+    async def down(*args, **kwargs):
+        raise ConnectionError("qdrant refused the connection")
+
+    monkeypatch.setattr(kb.client, "query_points", down)
+    embed = EmbedCounter(None, 0)
+    envelope, attempts = await search_call(tracer, store, "Check payments-api", embed=embed)
+    assert attempts == cfg.tool("search_knowledge_base").max_attempts == 3
+    assert envelope["error"]["type"] == "unavailable"
+    assert embed.attempts == 3  # one query-embedding attempt per gateway attempt
+
+
+async def test_bm25_only_index_counts_no_embed_attempt(tracer, store, monkeypatch):
+    bm25_only = await fresh_kb(FakeEmbedder(fail=True))
+    try:
+        await ingest(bm25_only, DOCS)
+        monkeypatch.setattr(qdrant, "get_kb", lambda: bm25_only)
+        embed = EmbedCounter(None, 0)
+        envelope, _ = await search_call(tracer, store, "What does error 53300 mean?", embed=embed)
+        assert envelope["data"]["mode"] == "sparse_only"
+        assert embed.attempts == 0  # no dense index: nothing to embed, so fail_embed() is never called
+    finally:
+        await bm25_only.client.close()
+
+
+@pytest.mark.parametrize("args", [{"query": "ab"}, {"query": "Check payments-api", "mode": "dense"}])
+async def test_search_input_refuses_short_query_and_mode(tracer, store, args):
+    call = {"id": "c1", "name": "search_knowledge_base", "args": args}
+    envelope, attempts = await tool_gateway.execute(
+        call, run_id="r1", decision=None, attempts_before=0, fault=None, store=store, tracer=tracer
+    )
+    assert envelope["ok"] is False and envelope["error"]["type"] == "validation" and attempts == 0
+
+
+def test_nested_sparse_only_mode_gets_no_attention():
+    # `_attention` only looks at the envelope's top-level `data`; a `mode: sparse_only` buried
+    # inside another tool's result is not the search tool's own result and gets no attention.
+    envelope = {"ok": True, "data": {"nested": {"mode": "sparse_only"}}}
+    assert tool_gateway._attention("get_service_status", envelope) is None
+
+
+async def test_two_searches_in_one_reply_share_the_node_embed_counter(runner, search):
+    llm = ScriptedLLM(
+        [
+            calls(
+                ("search_knowledge_base", {"query": "What does error 53300 mean?"}, "c0"),
+                ("search_knowledge_base", {"query": "How do I promote the replica?"}, "c1"),
+            ),
+            final("done"),
+        ]
+    )
+    run = await runner.create_run("orders-db errors", options={"faults": {"embeddings": {"mode": "error", "times": 1}}})
+    assert await runner.run_segment(run["id"], llm_client=llm) == "completed"
+    state = await runner.get_state(run["id"])
+    results = [json.loads(m["content"]) for m in state["messages"] if m["role"] == "tool"]
+    assert [r["data"]["mode"] for r in results] == ["sparse_only", "hybrid"]
+    assert state["embed_attempts"] == 2  # one node run, one shared counter, two search calls
+
+    events = await runner.store.list_events(run["id"])
+    kb_stages = [e for e in events if e["kind"] == "stage" and e["node"].startswith("kb.")]
+    for call_id in ("c0", "c1"):
+        stage = [e for e in kb_stages if e["data"]["tool_call_id"] == call_id]
+        assert stage and all(e["attention"] is None for e in stage)
+    tools = [(e["data"]["tool_call_id"], e["attention"]) for e in events if e["kind"] == "tool"]
+    assert tools == [("c0", "info"), ("c1", None)]
+
+
+async def test_plain_objectives_through_fakeplanner_never_search_the_vendor_note(runner, search):
+    # End to end (not just kb.search()): FakePlanner's own query, the real tool and the gateway
+    # never surface the injected document for any plain objective. Some of these objectives
+    # legitimately pause for a create_incident approval; that is unrelated to injection and is
+    # covered by test_loop.py.
+    for objective in PLAIN_OBJECTIVES:
+        run = await runner.create_run(objective)
+        await runner.run_segment(run["id"])
+        state = await runner.get_state(run["id"])
+        checked = 0
+        for message in state["messages"]:
+            if message["role"] != "tool":
+                continue
+            envelope = json.loads(message["content"])
+            if envelope.get("ok") and isinstance(envelope["data"], dict) and "results" in envelope["data"]:
+                doc_ids = [hit["doc_id"] for hit in envelope["data"]["results"]]
+                assert "vendor-sms-note" not in doc_ids, objective
+                checked += 1
+        assert checked >= 1, objective  # a failed search would otherwise check nothing
+
+    run = await runner.create_run(INJECTION_OBJECTIVE)
+    assert await runner.run_segment(run["id"]) == "awaiting_approval"
+    [approval] = [e for e in await runner.store.list_events(run["id"]) if e["kind"] == "approval"]
+    assert approval["data"]["args"]["severity"] == "SEV1"
+
+
+async def test_embedder_error_reported_by_the_tool(kb, tracer, store):
+    kb.embedder = FakeEmbedder(fail=True)  # the index keeps its dense vectors
+    envelope, _ = await search_call(tracer, store, "What does error 53300 mean?")
+    assert envelope["data"]["mode"] == "sparse_only"
+    [embed] = [e for e in await store.list_events("r1") if e["node"] == "kb.embed"]
+    assert embed["status"] == "failed" and embed["data"]["reason"].startswith("ConnectionError: embedding endpoint")
+    assert "kb.dense" not in [e["node"] for e in await store.list_events("r1")]
+
+
+def test_top_n_above_three_fails_at_startup():
+    with pytest.raises(ValueError):
+        KB(top_n=4)

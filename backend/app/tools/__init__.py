@@ -14,6 +14,7 @@ from pydantic import BaseModel
 from app.harness.state import ErrorType
 from app.harness.store import Store
 from app.harness.tracer import Tracer
+from app.tools.faults import EmbedCounter
 
 
 class ToolError(Exception):
@@ -31,6 +32,7 @@ class ToolContext:
     tool_call_id: str
     store: Store
     tracer: Tracer
+    embed: EmbedCounter | None = None  # only the search tool reads it
 
     @property
     def idempotency_key(self) -> str:

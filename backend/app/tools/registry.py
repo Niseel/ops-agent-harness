@@ -1,12 +1,12 @@
 """The tools the harness allows. A tool that is not in TOOLS never runs.
 
 Timeouts and attempts come from `cfg.tool(name)` when a call runs, so they are
-not stored here. M2 adds search_knowledge_base.
+not stored here.
 """
 
-from app.tools import Tool, incident, status
+from app.tools import Tool, incident, kb, status
 
-TOOLS: dict[str, Tool] = {t.name: t for t in (status.TOOL, incident.TOOL)}
+TOOLS: dict[str, Tool] = {t.name: t for t in (kb.TOOL, status.TOOL, incident.TOOL)}
 
 
 def openai_tools() -> list[dict]:

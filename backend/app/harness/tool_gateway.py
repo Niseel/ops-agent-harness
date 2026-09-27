@@ -19,7 +19,7 @@ from app.harness.state import RETRYABLE, err, ok
 from app.harness.store import Store
 from app.harness.tracer import Tracer
 from app.tools import Tool, ToolContext, ToolError
-from app.tools.faults import ToolFault, hits
+from app.tools.faults import EmbedCounter, ToolFault, hits
 from app.tools.registry import TOOLS
 
 log = logging.getLogger("app.tools")
@@ -52,6 +52,7 @@ async def execute(
     fault: ToolFault | None,
     store: Store,
     tracer: Tracer,
+    embed: EmbedCounter | None = None,
 ) -> tuple[dict, int]:
     """Run one call `{id, name, args}`. Returns (envelope, attempts made); 0 attempts = refused before running.
 
@@ -74,7 +75,7 @@ async def execute(
         await refused(call, envelope, run_id=run_id, tracer=tracer)
         return envelope, 0
 
-    ctx = ToolContext(run_id=run_id, tool_call_id=call["id"], store=store, tracer=tracer)
+    ctx = ToolContext(run_id=run_id, tool_call_id=call["id"], store=store, tracer=tracer, embed=embed)
     tool_cfg = cfg.tool(name)
     for attempt in range(1, tool_cfg.max_attempts + 1):
         faulted = fault if hits(fault, attempts_before + attempt - 1) else None
@@ -173,5 +174,8 @@ async def _tool_event(
 
 def _attention(name: str, envelope: dict) -> str | None:
     if envelope["ok"]:
-        return "success" if name == "create_incident" else None
+        if name == "create_incident":
+            return "success"
+        data = envelope["data"]
+        return "info" if isinstance(data, dict) and data.get("mode") == "sparse_only" else None
     return "warn" if envelope["error"]["type"] in ("validation", "bad_output") else "error"
