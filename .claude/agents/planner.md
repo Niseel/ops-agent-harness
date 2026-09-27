@@ -3,7 +3,7 @@ name: planner
 description: Tech lead. Turns a spec/intent into a testable plan in plans/. Use before any non-trivial change. Never edits source code.
 tools: Read, Grep, Glob, Write, WebFetch, WebSearch
 model: opus
-effort: high
+effort: max
 color: blue
 memory: project
 skills:

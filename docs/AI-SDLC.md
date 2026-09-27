@@ -30,7 +30,7 @@ Skills are installed with `npx skills` into `.agents/skills/` (pinned in `skills
 | ai-engineer | LLM, agent loop, tools, knowledge base, evaluation | planner, coder, tester, reviewer (preloaded); main agent when a task lists it |
 | secure-api-review | anything under `/api`, the Postman collection | coder, tester, reviewer, verifier (preloaded); main agent when a task lists it |
 
-Subagent models: planner and reviewer `opus`/high, coder `sonnet`/xhigh, tester `sonnet`/medium, verifier `haiku`/low.
+Subagent models: planner `opus`/max, reviewer `opus`/high, coder `sonnet`/xhigh, tester `sonnet`/medium, verifier `haiku`/low.
 
 Each plan task names its skills in the Skills column. The main agent invokes them before coding the task and notes them in the Pipeline log.
 
