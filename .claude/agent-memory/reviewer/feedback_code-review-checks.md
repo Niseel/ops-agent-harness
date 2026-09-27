@@ -28,5 +28,11 @@ Found in the M1 T4 review (2026-09-27), carry into T5/T6/M3 reviews:
 - `incidents` goes up only on an `ok` envelope. With `timeout_after_commit` times>=2 the incident is committed but the LLM sees `timeout`, so the cap can let a second proposal through. Check T5/M3 count incidents from the store for the run.
 - Probe scripts need `PYTHONPATH=.` from backend/ (`uv run python` does not put `app` on the path).
 
+Found in the M1 T5 review (2026-09-27):
+
+- Test names in a task's file can collide with names a later task's Proof rows reserve in the same file (T5 unit `test_limits.py::test_repeat_call_blocked` vs T6's run-level test of that name). Grep the plan's Proof table for every new test name; a later collision invites deleting or overwriting the earlier test.
+- pydantic `strict=True` in a model's config does not reach nested models with their own config (options `faults.times: "2"` or `true` still coerce). Probe nested fields when a coder claims "strict".
+- `raw or {}` turns any falsy non-dict (`[]`, `0`, `""`) into defaults; probe option parsers with falsy wrong types.
+
 **Why:** the tester runs the listed tests; these gaps pass them.
 **How to apply:** on every review touching logging, SQL or the tracer, run the probes above in the scratchpad. See also [[spec-adr-config-drift-hotspots]].
