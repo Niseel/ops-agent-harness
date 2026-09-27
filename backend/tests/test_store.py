@@ -162,3 +162,23 @@ async def test_latest_eval_report_round_trip(store):
     assert await store.latest_eval_report() == new
     await store.insert_eval_report(same_time)
     assert (await store.latest_eval_report())["id"] == "c"  # same created_at: the last one inserted
+
+
+async def test_evals_listed_per_run(store):
+    await store.create_run(id="r1", objective="o", llm_mode="fake", model="fake", options={})
+    await store.create_run(id="r2", objective="o", llm_mode="fake", model="fake", options={})
+    await store.insert_eval(
+        "r1", target="search:c0", metric="context_relevance", value=0.8, judge_model="j", error=None
+    )
+    await store.insert_eval(
+        "r2", target="answer", metric="faithfulness", value=None, judge_model="j", error="judge unreachable"
+    )
+    await store.insert_eval("r1", target="answer", metric="faithfulness", value=0.5, judge_model="j", error=None)
+    rows = await store.list_evals("r1")
+    assert [(r["target"], r["metric"], r["value"]) for r in rows] == [
+        ("search:c0", "context_relevance", 0.8),
+        ("answer", "faithfulness", 0.5),
+    ]
+    assert rows[0]["created_at"].endswith("Z") and rows[0]["judge_model"] == "j"
+    assert (await store.list_evals("r2"))[0]["error"] == "judge unreachable"
+    assert await store.list_evals("none") == []

@@ -199,6 +199,21 @@ class Store:
         async with self._db.execute(query + " ORDER BY created_at, id", args) as cur:
             return [dict(row) for row in await cur.fetchall()]
 
+    # --- per-run evaluation --------------------------------------------------------------
+
+    async def insert_eval(
+        self, run_id: str, *, target: str, metric: str, value: float | None, judge_model: str | None, error: str | None
+    ) -> None:
+        await self._db.execute(
+            "INSERT INTO evals (run_id, target, metric, value, judge_model, error, created_at)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (run_id, target, metric, value, judge_model, error, now_iso()),
+        )
+
+    async def list_evals(self, run_id: str) -> list[dict]:
+        async with self._db.execute("SELECT * FROM evals WHERE run_id = ? ORDER BY id", (run_id,)) as cur:
+            return [dict(row) for row in await cur.fetchall()]
+
     # --- evaluation reports ---------------------------------------------------------------
 
     async def insert_eval_report(self, report: dict) -> None:

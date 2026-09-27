@@ -70,7 +70,7 @@ eval_reports              golden-set runs, not tied to a run
 | `runs` | `id`, `objective`, `status`, `llm_mode`, `options_json`, `final`, `error`, `steps`, `tool_calls`, timestamps | One row per run: list, status, options for resume |
 | `approvals` | `id`, `run_id`, `tool_call_id`, `tool`, `args_json`, `status`, `decision_json`, `reason`, `decided_by`, `expires_at` | Audit of human decisions. `UNIQUE(run_id, tool_call_id)`; decisions update only `pending` rows |
 | `events` | `seq` (autoincrement), `run_id`, `t_ms`, `kind`, `node`, `tool`, `status`, `attention`, `msg`, `data_json` | Trace for the UI, the API and replays (`Last-Event-ID`). Index on `(run_id, seq)` |
-| `evals` | `id`, `run_id`, `target`, `metric`, `value`, `judge_model`, `error` | Online scores: context relevance per search, faithfulness and answer relevancy of the answer |
+| `evals` | `id`, `run_id`, `target`, `metric`, `value`, `judge_model`, `error` | Online scores: context relevance per search, faithfulness and answer relevancy of the answer. `target` is `search:<tool_call_id>` or `answer` |
 | `eval_reports` | `id`, `created_at`, `models_json`, `config_json`, `summary_json`, `rows_json` | Offline golden-set reports, compared across runs |
 | `incidents` | `id`, `idempotency_key` (unique), `run_id`, `title`, `description`, `severity`, `status` | The mock external system. A retried call returns the same incident |
 

@@ -17,7 +17,8 @@ from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.errors import GraphRecursionError
 
 from app.clock import now_iso
-from app.config import settings
+from app.config import cfg, settings
+from app.eval import metrics, online
 from app.harness import policy
 from app.harness.loop import STATUS_BY_ERROR, RunContext, build_graph
 from app.harness.policy import RunOptions
@@ -28,6 +29,7 @@ from app.llm.fake import FakePlanner
 from app.llm.openai_compat import OpenAICompatClient
 
 log = logging.getLogger("app.runner")
+eval_log = logging.getLogger("app.eval")
 
 LLM_MODES = ("fake", "openai")
 _DONE_ATTENTION = {RunStatus.COMPLETED: "success", RunStatus.CANCELLED: "info"}  # other final statuses: error
@@ -70,6 +72,9 @@ class Runner:
         if mode not in LLM_MODES:
             raise ValueError(f"llm must be one of {LLM_MODES}")
         opts = policy.parse_options(options, allow_faults=settings.allow_fault_injection)
+        if opts.evaluate is None:
+            # Online evaluation by default only when a judge answers; the judge is asked only when that default is on.
+            opts.evaluate = cfg.eval.online_default and await metrics.get_judge().reachable()
         return await self.store.create_run(
             id=uuid.uuid4().hex,
             objective=objective,
@@ -104,17 +109,17 @@ class Runner:
                 )
         except TimeoutError:
             if not deadline.expired():  # a TimeoutError from inside the graph is a bug, not the segment limit
-                return await self._internal_error(run_id, config)
-            return await self._finish(run_id, config, "max_run_seconds")
+                return await self._internal_error(run_id, opts)
+            return await self._finish(run_id, opts, "max_run_seconds")
         except GraphRecursionError:
-            return await self._finish(run_id, config, "recursion_limit")
+            return await self._finish(run_id, opts, "recursion_limit")
         except Exception:  # never CancelledError: a cancelled segment is not a failed run
-            return await self._internal_error(run_id, config)
+            return await self._internal_error(run_id, opts)
 
         if out.interrupts:
             await self._pause(run_id, out)
             return RunStatus.AWAITING_APPROVAL
-        return await self._finish(run_id, config, out.value["error"], out.value)
+        return await self._finish(run_id, opts, out.value["error"], out.value)
 
     async def get_state(self, run_id: str) -> dict:
         """The run's last checkpoint (empty before the first step)."""
@@ -149,15 +154,15 @@ class Runner:
                 data={**pending.value, "interrupt_id": pending.id},
             )
 
-    async def _internal_error(self, run_id: str, config: dict) -> str:
+    async def _internal_error(self, run_id: str, opts: RunOptions) -> str:
         log.exception("run failed with an unexpected error", extra={"run_id": run_id})  # traceback: log only
         await self.tracer.emit(run_id, "error", status="failed", attention="error", msg="unexpected error, see the log")
-        return await self._finish(run_id, config, "internal_error")
+        return await self._finish(run_id, opts, "internal_error")
 
-    async def _finish(self, run_id: str, config: dict, error: str | None, state: dict | None = None) -> str:
-        """Write the run row, then emit the one `done` event."""
+    async def _finish(self, run_id: str, opts: RunOptions, error: str | None, state: dict | None = None) -> str:
+        """Write the run row, emit the one `done` event, then evaluate the run when its options say so."""
         if state is None:  # the graph did not return: read the last checkpoint
-            state = (await self.graph.aget_state(config)).values
+            state = (await self.graph.aget_state(self._config(run_id, opts))).values
         status = STATUS_BY_ERROR[error]
         steps, tool_calls = state.get("steps", 0), state.get("tool_calls", 0)
         await self.store.update_run(
@@ -177,6 +182,14 @@ class Runner:
             msg=f"run {status}" + (f" ({error})" if error else ""),
             data={"status": status, "error": error, "steps": steps, "tool_calls": tool_calls},
         )
+        if opts.evaluate:
+            # After `done` and outside the segment's time limit. Scores never change the run.
+            try:
+                await online.evaluate_run(
+                    run_id, state, judge=metrics.get_judge(), store=self.store, tracer=self.tracer
+                )
+            except Exception:  # CancelledError is not caught
+                eval_log.exception("online evaluation failed", extra={"run_id": run_id})
         return status
 
 

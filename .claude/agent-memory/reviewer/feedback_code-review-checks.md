@@ -43,6 +43,12 @@ Found in the M1 owner timestamp fix review (2026-09-27):
 
 - One format rule: every harness timestamp comes from `app/clock.py:now_iso` (`...T09:00:00.123Z`), guarded by a regex test in test_tracing.py. The regex also matches `fromisoformat(` (parsing), so M3 approval expiry should compare `expires_at` as text against `now_iso()` or add a parse helper to clock.py. Fixture data (`data/services.json` `updated_at` has no ms) is outside the rule; check new fixtures and DESIGN §3 wording stay consistent.
 
+Found in the M2 T4 review (2026-09-27), carry into M3/M4:
+
+- Online evaluation runs inside `_finish` after `done`, with the run row already final. M3 cancel must decide 409 from the row status, never from "segment task still running"; otherwise a cancel during evaluation cancels the task and writes a second `done` (`cancelled`). Probe: cancel while a slow FakeJudge scores.
+- Spec attention table names only "Judge unreachable" for `eval`+`info`, but every null (error, NaN, no contexts) gives `info`. M4 maps from that table.
+- `evaluate_run` probes the judge (up to 2 s) even when there is nothing to score (empty state, no search, no final).
+
 **Why:** the tester runs the listed tests; these gaps pass them.
 **How to apply:** on every review touching logging, SQL or the tracer, run the probes above in the scratchpad. See also [[spec-adr-config-drift-hotspots]].
 

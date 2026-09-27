@@ -7,6 +7,7 @@ import pytest
 from qdrant_client import AsyncQdrantClient
 
 from app.config import cfg, settings
+from app.eval import metrics
 from app.eval.metrics import RagasJudge
 from app.harness.runner import Runner
 from app.harness.store import Store
@@ -178,3 +179,9 @@ async def live_judge():
     if not await judge.reachable():
         pytest.skip("no judge endpoint")
     return judge
+
+
+@pytest.fixture(autouse=True)
+def no_real_judge(monkeypatch):
+    """No test reaches a real judge: create_run then stores evaluate=false. Online tests patch in their own judge."""
+    monkeypatch.setattr(metrics, "get_judge", lambda: FakeJudge(reachable=False))

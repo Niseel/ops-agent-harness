@@ -109,7 +109,7 @@ START → guard ──limit hit────────────────�
 | agent | Calls the LLM through `llm_gateway` with the system prompt, history and tool schemas. Final answer, tool calls, or malformed. For tool calls it runs the pure checks (input validation, repeat guard, `max_tool_calls`, incident cap) so that a human is never asked to approve a call that would be refused anyway. The incident cap also counts earlier `create_incident` calls in the same reply. Refused calls do not run; they reach the `tools` step as error envelopes, so every `tool_call_id` gets a tool message. |
 | approval | Reads state, calls `interrupt({tool_call_id, tool, args})`, stores the decision. No side effect before `interrupt()`, because LangGraph re-runs the node on resume. If one reply mixes approval and non-approval calls, all of them wait for the decision. |
 | tools | Runs the pending calls one by one through `tool_gateway`, appends one tool message per call. |
-| finalize | Sets the final status and answer; queues online evaluation when enabled. |
+| finalize | Sets the final status and answer. |
 
 Agent state (in the checkpoint): `run_id, objective, messages, pending, decisions, steps, tool_calls, tool_attempts, llm_attempts, embed_attempts, call_counts, repairs, incidents, status, final, error`. `steps` counts every LLM call, including malformed ones. `tool_attempts` counts attempts per tool name across the run; `llm_attempts` and `embed_attempts` count LLM calls and query embedding calls for fault injection. Messages are plain OpenAI-style dicts. Run options (limits, faults, LLM mode, evaluate) are stored in `runs.options_json` and loaded into the runtime context at the start of each segment, together with the tracer and the LLM client.
 
@@ -229,7 +229,7 @@ Events are appended to the `events` table and published to live subscribers. The
 | Run `completed` | `done` | `success` | green |
 | Run `cancelled` | `done` | `info` | blue |
 | Approval expired | `approval` | `info` | blue |
-| Judge unreachable, metric `null` | `eval` | `info` | blue |
+| Metric `null` (judge unreachable, metric error, no value, no contexts) | `eval` | `info` | blue |
 
 Every final status (`completed`, `failed`, `limit_exceeded`, `timed_out`, `cancelled`) emits exactly one `done` event.
 
@@ -251,7 +251,7 @@ SQLite file `DB_PATH` ([0004](../docs/adr/0004-state-and-database-sqlite.md)): L
 ([0008](../docs/adr/0008-evaluation-ragas-offline-online.md))
 
 - **Offline**: `evals/kb_golden.jsonl` (`eval.golden_set`, relative to the repo root), lines of `{question, reference, relevant_doc_ids}`. Each question runs in `hybrid`, `dense` and `sparse` modes. Deterministic metrics `hit@3`, `MRR@10` and `recall@3` by `doc_id` (`hit@3` and `recall@3` use the first 3 distinct `doc_id`s of the ranking, `MRR@10` the distinct `doc_id`s in the first 10 hits); RAGAS `ContextPrecision` and `ContextRecall` when a judge is reachable. The report is stored in `eval_reports`.
-- **Online** (option `evaluate`, default `eval.online_default` when a judge is reachable): after a run finishes, a background job stores in `evals` the context relevance of every search call, and the faithfulness (against all tool outputs of the run) and answer relevancy of the final answer. Faithfulness below `eval.thresholds.faithfulness`, or context relevance below `eval.thresholds.context_relevance`, emits a `warn` event. These `eval` events come after `done`, so they are in `GET /api/runs/{id}` (`evals`) and `/trace`, not in a live stream that already closed; the UI re-reads the run to show the badges.
+- **Online** (option `evaluate`, default `eval.online_default` when a judge is reachable): after a run finishes, a background job stores in `evals` the context relevance of every search call, and the faithfulness (against all tool outputs of the run) and answer relevancy of the final answer. The runner runs it right after the `done` event of every run that ends `completed`, `failed`, `limit_exceeded` or `timed_out`, outside the segment's time limit. When `evaluate` is omitted and `eval.online_default` is true, `create_run` stores `true` if the judge answers `GET /models` within 2 s, else `false`; when `online_default` is false it stores `false` without asking the judge. Targets are `search:<tool_call_id>` and `answer`; a run without a final answer gets no answer metrics. Faithfulness below `eval.thresholds.faithfulness`, or context relevance below `eval.thresholds.context_relevance`, emits a `warn` event. These `eval` events come after `done`, so they are in `GET /api/runs/{id}` (`evals`) and `/trace`, not in a live stream that already closed; the UI re-reads the run to show the badges.
 - **Judge**: `JUDGE_*` env vars, defaulting to `LLM_*`. Unreachable → metric `null` with a reason. Evaluation never changes a run's status.
 - **Scenario evals**: `evals/<name>.json` = `{name, objective, llm, limits?, faults?, decisions, expect: {status, attempts?, incidents?, search_mode?}}`. `decisions` is a list of `{decision, reason?, args?}` applied in order to the approvals as they appear. `evals/run.sh` starts each scenario through the API, sends the listed decisions, saves `GET /api/runs/{id}/trace`, and `evals/check.sh <scenario> <trace>` grades it with `jq`.
 

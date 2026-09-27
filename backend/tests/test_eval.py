@@ -1,9 +1,12 @@
 import asyncio
+import json
+import logging
 import math
 import os
 import re
 import subprocess
 import sys
+from dataclasses import replace
 
 import pytest
 from conftest import FakeEmbedder, FakeJudge
@@ -11,11 +14,16 @@ from pydantic import ValidationError
 from qdrant_client import AsyncQdrantClient
 
 from app.config import ROOT, Settings, cfg, settings
-from app.eval import metrics
+from app.eval import metrics, online
 from app.eval.golden import MODES, GoldenItem, _summary, load_golden, run_golden
 from app.eval.metrics import RagasJudge, doc_ranking, hit_at_k, recall_at_k, reciprocal_rank, safe_score
 from app.kb.ingest import ingest, load_chunks
-from app.kb.qdrant import KnowledgeBase
+from app.kb.qdrant import KnowledgeBase, Search
+from app.llm import fake
+from app.tools import registry
+
+# Taken before the autouse no_real_judge fixture replaces metrics.get_judge.
+_real_get_judge = metrics.get_judge
 
 ITEMS = [
     GoldenItem(
@@ -200,12 +208,12 @@ async def test_safe_score_does_not_swallow_cancelled_error():
 def test_get_judge_is_cached_without_network(monkeypatch):
     built = []
     monkeypatch.setattr(RagasJudge, "from_settings", classmethod(lambda cls: built.append(object()) or built[-1]))
-    metrics.get_judge.cache_clear()
+    _real_get_judge.cache_clear()
     try:
-        assert metrics.get_judge() is metrics.get_judge() is built[0]
+        assert _real_get_judge() is _real_get_judge() is built[0]
         assert len(built) == 1  # built once, from settings, no network call
     finally:
-        metrics.get_judge.cache_clear()
+        _real_get_judge.cache_clear()
 
 
 def test_judge_json_mode_rejects_unknown_value(monkeypatch):
@@ -298,3 +306,326 @@ async def test_ragas_judge_live(live_judge):
         await live_judge.answer_relevancy("What severity is a down service?", "It is SEV1."),
     ):
         assert 0 <= value <= 1
+
+
+# --- online evaluation (T4) -----------------------------------------------------------------
+
+
+async def online_run(runner, monkeypatch, judge, objective="Why is payments-api slow?", **options):
+    monkeypatch.setattr(metrics, "get_judge", lambda: judge)
+    run = await runner.create_run(objective, options={"evaluate": True, **options})
+    status = await runner.run_segment(run["id"])
+    return run["id"], status
+
+
+async def test_online_scores_stored_after_run(runner, search, monkeypatch):
+    judge = FakeJudge()
+    run_id, status = await online_run(runner, monkeypatch, judge)
+    assert status == "completed"
+    state = await runner.get_state(run_id)
+    search_id = next(
+        c["id"]
+        for m in state["messages"]
+        for c in m.get("tool_calls") or ()
+        if c["function"]["name"] == "search_knowledge_base"
+    )
+    evals = await runner.store.list_evals(run_id)
+    assert [(e["target"], e["metric"], e["value"], e["judge_model"], e["error"]) for e in evals] == [
+        (f"search:{search_id}", "context_relevance", 0.9, "fake-judge", None),
+        ("answer", "faithfulness", 0.9, "fake-judge", None),
+        ("answer", "answer_relevancy", 0.9, "fake-judge", None),
+    ]
+    metric, (query, snippets) = judge.calls[0]
+    assert metric == "context_relevance" and query == "Why is payments-api slow?" and len(snippets) == 3
+    metric, (question, answer, contexts) = judge.calls[1]
+    assert (metric, question, answer) == ("faithfulness", "Why is payments-api slow?", state["final"])
+    assert contexts[0].startswith("payments-api runbook / High latency: ") and '"status": "degraded"' in contexts[-1]
+    assert judge.calls[2] == ("answer_relevancy", ("Why is payments-api slow?", state["final"]))
+    events = await runner.store.list_events(run_id)
+    kinds = [e["kind"] for e in events]
+    assert kinds[-4:] == ["done", "eval", "eval", "eval"]  # scores come after done
+    first = events[-3]
+    assert (first["node"], first["tool"], first["status"], first["attention"]) == (
+        "eval",
+        "search_knowledge_base",
+        "ok",
+        None,
+    )
+    assert first["data"] == {
+        "target": f"search:{search_id}",
+        "metric": "context_relevance",
+        "value": 0.9,
+        "judge_model": "fake-judge",
+        "error": None,
+        "threshold": cfg.eval.thresholds.context_relevance,
+    }
+    assert events[-1]["tool"] is None and events[-1]["data"]["threshold"] is None  # no threshold for answer relevancy
+
+
+async def test_low_score_emits_warn(runner, search, monkeypatch):
+    judge = FakeJudge(scores={"faithfulness": 0.5, "context_relevance": 0.4, "answer_relevancy": 0.1})
+    run_id, _ = await online_run(runner, monkeypatch, judge)
+    evals = [e for e in await runner.store.list_events(run_id) if e["kind"] == "eval"]
+    assert [(e["data"]["metric"], e["attention"]) for e in evals] == [
+        ("context_relevance", "warn"),
+        ("faithfulness", "warn"),
+        ("answer_relevancy", None),
+    ]
+    assert evals[1]["msg"] == "faithfulness 0.50 (below 0.7)"
+    at_threshold = FakeJudge(scores={"faithfulness": cfg.eval.thresholds.faithfulness})
+    run_id, _ = await online_run(runner, monkeypatch, at_threshold)
+    faithfulness = next(
+        e
+        for e in await runner.store.list_events(run_id)
+        if e["kind"] == "eval" and e["data"]["metric"] == "faithfulness"
+    )
+    assert faithfulness["attention"] is None  # strictly below warns
+
+
+async def test_judge_down_gives_null_and_run_unchanged(runner, search, monkeypatch):
+    judge = FakeJudge(reachable=False)
+    run_id, status = await online_run(runner, monkeypatch, judge)
+    assert status == "completed" and judge.calls == []
+    evals = await runner.store.list_evals(run_id)
+    assert len(evals) == 3 and all(e["value"] is None and e["error"] == "judge unreachable" for e in evals)
+    events = await runner.store.list_events(run_id)
+    scored = [e for e in events if e["kind"] == "eval"]
+    assert all(e["attention"] == "info" and e["status"] == "error" for e in scored)
+    assert scored[0]["msg"] == "context_relevance null: judge unreachable"
+    assert [e["status"] for e in events if e["kind"] == "done"] == ["completed"]
+    assert (await runner.store.get_run(run_id))["status"] == "completed"
+
+
+async def test_evaluate_default_follows_online_default_and_judge(runner, monkeypatch):
+    async def stored(**options):
+        run = await runner.create_run("Check payments-api", options=options or None)
+        return (await runner.store.get_run(run["id"]))["options"]["evaluate"]
+
+    judge = FakeJudge()
+    probes = []
+    real_reachable = judge.reachable
+
+    async def counted():
+        probes.append(1)
+        return await real_reachable()
+
+    judge.reachable = counted
+    monkeypatch.setattr(metrics, "get_judge", lambda: judge)
+    monkeypatch.setattr(cfg.eval, "online_default", True)
+    assert await stored() is True and len(probes) == 1
+    judge.is_reachable = False
+    assert await stored() is False and len(probes) == 2
+    assert await stored(evaluate=True) is True and await stored(evaluate=False) is False  # given values kept
+    assert len(probes) == 2  # no probe for a given value
+    monkeypatch.setattr(cfg.eval, "online_default", False)
+    judge.is_reachable = True
+    assert await stored() is False and len(probes) == 2  # default off: the judge is not asked
+
+
+async def test_metric_error_or_nan_gives_null_with_reason(runner, search, monkeypatch):
+    judge = FakeJudge(errors={"faithfulness": RuntimeError("judge said no")}, scores={"answer_relevancy": math.nan})
+    run_id, _ = await online_run(runner, monkeypatch, judge)
+    evals = {e["metric"]: e for e in await runner.store.list_evals(run_id)}
+    assert evals["context_relevance"]["value"] == 0.9
+    assert (evals["faithfulness"]["value"], evals["faithfulness"]["error"]) == (None, "RuntimeError: judge said no")
+    assert (evals["answer_relevancy"]["value"], evals["answer_relevancy"]["error"]) == (None, "no value (NaN)")
+
+
+async def test_run_without_final_answer_gets_no_answer_rows(runner, search, monkeypatch):
+    run_id, status = await online_run(runner, monkeypatch, FakeJudge(), limits={"max_steps": 1})
+    assert status == "limit_exceeded"
+    evals = await runner.store.list_evals(run_id)
+    assert [(e["target"].split(":")[0], e["metric"]) for e in evals] == [("search", "context_relevance")]
+
+
+async def test_evaluation_failure_never_changes_run(runner, search, monkeypatch, caplog):
+    async def broken(*args, **kwargs):
+        raise RuntimeError("evaluation bug")
+
+    monkeypatch.setattr(online, "evaluate_run", broken)
+    caplog.set_level(logging.ERROR, logger="app.eval")
+    run_id, status = await online_run(runner, monkeypatch, FakeJudge())
+    assert status == "completed"
+    row = await runner.store.get_run(run_id)
+    done = [e for e in await runner.store.list_events(run_id) if e["kind"] == "done"]
+    assert (row["status"], row["error"], row["steps"], row["tool_calls"]) == ("completed", None, 3, 2)
+    assert row["final"] and row["finished_at"] and len(done) == 1
+    assert done[0]["data"] == {"status": "completed", "error": None, "steps": 3, "tool_calls": 2}
+    assert [e["kind"] for e in await runner.store.list_events(run_id)][-1] == "done"
+    failures = [r for r in caplog.records if r.name == "app.eval"]
+    assert len(failures) == 1 and failures[0].getMessage() == "online evaluation failed" and failures[0].exc_info
+
+
+async def test_evaluation_cancelled_error_propagates(runner, search, monkeypatch):
+    async def cancelled(*args, **kwargs):
+        raise asyncio.CancelledError
+
+    monkeypatch.setattr(online, "evaluate_run", cancelled)
+    run = await runner.create_run("Why is payments-api slow?", options={"evaluate": True})
+    with pytest.raises(asyncio.CancelledError):
+        await runner.run_segment(run["id"])
+
+
+async def test_evaluate_false_stores_no_rows_or_events(runner, search, monkeypatch):
+    judge = FakeJudge()
+    monkeypatch.setattr(metrics, "get_judge", lambda: judge)
+    run = await runner.create_run("Why is payments-api slow?", options={"evaluate": False})
+    status = await runner.run_segment(run["id"])
+    assert status == "completed"
+    assert await runner.store.list_evals(run["id"]) == []
+    assert judge.calls == []
+    kinds = {e["kind"] for e in await runner.store.list_events(run["id"])}
+    assert "eval" not in kinds
+
+
+async def test_paused_run_is_not_evaluated(runner, search, monkeypatch):
+    judge = FakeJudge()
+    monkeypatch.setattr(metrics, "get_judge", lambda: judge)
+    run = await runner.create_run(
+        "SMS alerts from notifications-worker are delayed. Check the SMS vendor note.", options={"evaluate": True}
+    )
+    status = await runner.run_segment(run["id"])
+    assert status == "awaiting_approval"
+    assert await runner.store.list_evals(run["id"]) == []
+    assert judge.calls == []
+    kinds = {e["kind"] for e in await runner.store.list_events(run["id"])}
+    assert "eval" not in kinds
+
+
+async def test_run_without_search_gets_only_answer_rows(runner, monkeypatch):
+    judge = FakeJudge()
+    monkeypatch.setattr(metrics, "get_judge", lambda: judge)
+    llm = fake.ScriptedLLM([fake.final("all good")])
+    run = await runner.create_run("Say hello", options={"evaluate": True})
+    status = await runner.run_segment(run["id"], llm_client=llm)
+    assert status == "completed"
+    evals = {e["metric"]: e for e in await runner.store.list_evals(run["id"])}
+    assert set(evals) == {"faithfulness", "answer_relevancy"}
+    assert (evals["faithfulness"]["value"], evals["faithfulness"]["error"]) == (None, "no contexts")
+    assert evals["answer_relevancy"]["value"] == 0.9
+    # faithfulness is never called at all: there are no contexts to score against
+    assert judge.calls == [("answer_relevancy", ("Say hello", "all good"))]
+
+
+async def test_failed_search_is_not_scored(runner, monkeypatch):
+    judge = FakeJudge()
+    monkeypatch.setattr(metrics, "get_judge", lambda: judge)
+    llm = fake.ScriptedLLM(
+        [fake.calls(("search_knowledge_base", {"query": "payments-api 5xx errors"})), fake.final("no answer")]
+    )
+    run = await runner.create_run(
+        "Check payments-api",
+        options={"evaluate": True, "faults": {"search_knowledge_base": {"mode": "error", "times": 3}}},
+    )
+    status = await runner.run_segment(run["id"], llm_client=llm)
+    assert status == "completed"
+    state = await runner.get_state(run["id"])
+    [tool_message] = [m for m in state["messages"] if m["role"] == "tool"]
+    assert json.loads(tool_message["content"])["ok"] is False  # the search failed, every attempt
+    evals = {e["metric"]: e for e in await runner.store.list_evals(run["id"])}
+    assert set(evals) == {"faithfulness", "answer_relevancy"}  # no search:<id> row
+    assert evals["faithfulness"]["error"] == "no contexts"  # a failed search adds no context either
+
+
+async def test_zero_result_search_is_not_scored(runner, search, monkeypatch):
+    async def no_hits(*args, **kwargs):
+        return Search(hits=[], mode="hybrid", embed_error=None, dense=[], bm25=[])
+
+    monkeypatch.setattr(search, "search", no_hits)
+    judge = FakeJudge()
+    monkeypatch.setattr(metrics, "get_judge", lambda: judge)
+    llm = fake.ScriptedLLM(
+        [fake.calls(("search_knowledge_base", {"query": "no matches at all"})), fake.final("nothing found")]
+    )
+    run = await runner.create_run("Check payments-api", options={"evaluate": True})
+    status = await runner.run_segment(run["id"], llm_client=llm)
+    assert status == "completed"
+    evals = {e["metric"]: e for e in await runner.store.list_evals(run["id"])}
+    assert set(evals) == {"faithfulness", "answer_relevancy"}
+    assert evals["faithfulness"]["error"] == "no contexts"
+
+
+async def test_two_searches_give_rows_in_message_order(runner, search, monkeypatch):
+    judge = FakeJudge()
+    monkeypatch.setattr(metrics, "get_judge", lambda: judge)
+    llm = fake.ScriptedLLM(
+        [
+            fake.calls(("search_knowledge_base", {"query": "payments-api 5xx errors"}, "c0")),
+            fake.calls(("search_knowledge_base", {"query": "auth-service login failures"}, "c1")),
+            fake.final("done"),
+        ]
+    )
+    run = await runner.create_run("Check things", options={"evaluate": True})
+    status = await runner.run_segment(run["id"], llm_client=llm)
+    assert status == "completed"
+    evals = await runner.store.list_evals(run["id"])
+    assert [e["target"] for e in evals] == ["search:c0", "search:c1", "answer", "answer"]
+
+
+async def test_failed_run_after_search_is_evaluated(runner, search, monkeypatch):
+    judge = FakeJudge()
+    monkeypatch.setattr(metrics, "get_judge", lambda: judge)
+    llm = fake.ScriptedLLM(
+        [
+            fake.calls(("search_knowledge_base", {"query": "payments-api 5xx errors"})),
+            fake.raw(finish_reason="length"),
+            fake.raw(finish_reason="length"),
+        ]
+    )
+    run = await runner.create_run("Check payments-api", options={"evaluate": True, "limits": {"max_repairs": 1}})
+    status = await runner.run_segment(run["id"], llm_client=llm)
+    assert status == "failed"
+    evals = await runner.store.list_evals(run["id"])
+    assert [e["metric"] for e in evals] == ["context_relevance"]  # no final answer: no answer rows
+    assert evals[0]["value"] == 0.9
+
+
+async def test_timed_out_run_is_still_evaluated(runner, search, monkeypatch):
+    async def slow(args, ctx):
+        await asyncio.sleep(2)
+        return {}
+
+    tool = registry.TOOLS["get_service_status"]
+    monkeypatch.setitem(registry.TOOLS, tool.name, replace(tool, run=slow))
+    monkeypatch.setattr(cfg.tools["get_service_status"], "timeout_s", 5)  # the segment limit fires first
+    judge = FakeJudge()
+    monkeypatch.setattr(metrics, "get_judge", lambda: judge)
+    llm = fake.ScriptedLLM(
+        [
+            fake.calls(("search_knowledge_base", {"query": "payments-api 5xx errors"})),
+            fake.calls(("get_service_status", {"service_name": "payments-api"})),
+        ]
+    )
+    run = await runner.create_run("Check payments-api", options={"evaluate": True, "limits": {"max_run_seconds": 1}})
+    status = await runner.run_segment(run["id"], llm_client=llm)
+    assert status == "timed_out"
+    evals = await runner.store.list_evals(run["id"])
+    assert [e["metric"] for e in evals] == ["context_relevance"]  # the search still scored, outside the deadline
+    events = await runner.store.list_events(run["id"])
+    assert [e["kind"] for e in events][-2:] == ["done", "eval"]
+
+
+async def test_online_eval_error_reasons_are_masked(runner, search, monkeypatch):
+    secret = settings.llm_api_key  # "lm-studio" by default, already in Tracer.secrets
+    judge = FakeJudge(errors={"faithfulness": RuntimeError(f"upstream rejected key {secret}")})
+    run_id, status = await online_run(runner, monkeypatch, judge)
+    assert status == "completed"
+    row = next(e for e in await runner.store.list_evals(run_id) if e["metric"] == "faithfulness")
+    assert secret not in (row["error"] or "") and "***" in row["error"]
+    event = next(
+        e
+        for e in await runner.store.list_events(run_id)
+        if e["kind"] == "eval" and e["data"]["metric"] == "faithfulness"
+    )
+    assert secret not in event["msg"]
+    assert secret not in json.dumps(event["data"])
+
+
+async def test_nothing_to_score_does_not_probe_the_judge(store, tracer):
+    judge = FakeJudge()
+    probed = []
+    judge.reachable = lambda: probed.append(1)  # would fail if awaited
+    assert (
+        await online.evaluate_run("r1", {"messages": [], "final": None}, judge=judge, store=store, tracer=tracer) == []
+    )
+    assert probed == [] and await store.list_evals("r1") == []

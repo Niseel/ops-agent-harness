@@ -39,7 +39,7 @@ class RunOptions(BaseModel):
 
     limits: Limits
     faults: Faults = Faults()
-    evaluate: bool | None = None  # None until M2 resolves the default
+    evaluate: bool | None = None  # None = not given; the runner's create_run resolves it to true or false
 
 
 def parse_options(raw: dict | None, *, allow_faults: bool) -> RunOptions:

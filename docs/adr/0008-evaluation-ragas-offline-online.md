@@ -1,6 +1,6 @@
 # 0008. Evaluation: RAGAS offline (golden set) and online (per run)
 
-Status: Accepted · Date: 2026-09-26 · Golden set moved to `evals/kb_golden.jsonl`, see [0018](0018-adopt-ai-sdlc-workflow.md)
+Status: Accepted · Date: 2026-09-26 · Golden set moved to `evals/kb_golden.jsonl`, see [0018](0018-adopt-ai-sdlc-workflow.md) · Refined in M2: online evaluation runs in the runner after `done`; the `evaluate` default needs a reachable judge; context relevance below its threshold also warns ([spec, Evaluation](../../specs/ops-agent-harness.md#evaluation))
 
 ## Context
 
