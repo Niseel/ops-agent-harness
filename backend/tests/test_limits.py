@@ -1,8 +1,14 @@
+import asyncio
+import json
+from dataclasses import replace
+
 import pytest
 
 from app.config import cfg
 from app.harness import policy
 from app.harness.policy import RunOptions, check_calls, parse_options, recursion_limit
+from app.llm import fake
+from app.tools import registry
 
 STATUS = {"id": "c0", "name": "get_service_status", "args": {"service_name": "payments-api"}}
 INCIDENT = {
@@ -243,3 +249,81 @@ def test_error_stays_max_tool_calls_when_a_later_call_is_blocked_for_another_rea
     checked = check([STATUS, invalid], tool_calls=2, max_tool_calls=2)
     assert refusals(checked) == ["blocked", "validation"]
     assert checked.error == "max_tool_calls"
+
+
+# --- run level (T6) ---------------------------------------------------------------------------
+
+
+def status_calls(*services, prefix="c"):
+    return fake.calls(*[("get_service_status", {"service_name": s}, f"{prefix}{i}") for i, s in enumerate(services)])
+
+
+async def start(runner, llm, **limits):
+    run = await runner.create_run("Check the services", options={"limits": limits})
+    status = await runner.run_segment(run["id"], llm_client=llm)
+    return status, await runner.store.get_run(run["id"]), await runner.get_state(run["id"])
+
+
+def results(state):
+    return [json.loads(m["content"]) for m in state["messages"] if m["role"] == "tool"]
+
+
+async def test_limits_stored_on_the_run(runner):
+    run = await runner.create_run("Check payments-api", options={"limits": {"max_steps": 100, "max_tool_calls": 3}})
+    stored = (await runner.store.get_run(run["id"]))["options"]
+    assert stored["limits"] == {**cfg.limits.model_dump(), "max_tool_calls": 3}
+    assert stored["evaluate"] is None
+
+
+async def test_max_steps_stops_run(runner):
+    llm = fake.ScriptedLLM([status_calls("payments-api"), status_calls("orders-db", prefix="d")])
+    status, row, state = await start(runner, llm, max_steps=2)
+    assert (status, row["error"], row["steps"], len(llm.seen)) == ("limit_exceeded", "max_steps", 2, 2)
+
+
+async def test_max_tool_calls_blocks_extra_call(runner):
+    llm = fake.ScriptedLLM([status_calls("payments-api", "orders-db", "auth-service")])
+    status, row, state = await start(runner, llm, max_tool_calls=2)
+    assert (status, row["error"], row["tool_calls"]) == ("limit_exceeded", "max_tool_calls", 2)
+    assert [r["ok"] for r in results(state)[:2]] == [True, True]
+    assert results(state)[2]["error"]["type"] == "blocked"
+    assert len(llm.seen) == 1  # the guard ends the run before another LLM turn
+
+
+async def test_exact_max_tool_calls_then_answer_completes(runner):
+    llm = fake.ScriptedLLM([status_calls("payments-api", "orders-db"), fake.final("done")])
+    status, row, _ = await start(runner, llm, max_tool_calls=2)
+    assert (status, row["error"], row["tool_calls"]) == ("completed", None, 2)
+
+
+async def test_repeat_call_blocked(runner):
+    llm = fake.ScriptedLLM(
+        [status_calls("payments-api"), status_calls("payments-api"), status_calls("payments-api"), fake.final("done")]
+    )
+    status, row, state = await start(runner, llm, max_repeat_calls=2)
+    assert status == "completed" and row["tool_calls"] == 2
+    assert [r["ok"] for r in results(state)] == [True, True, False]
+    assert results(state)[2]["error"]["type"] == "blocked"
+
+
+async def test_segment_timeout_ends_timed_out(runner, monkeypatch):
+    async def slow(args, ctx):
+        await asyncio.sleep(2)
+        return {}
+
+    tool = registry.TOOLS["get_service_status"]
+    monkeypatch.setitem(registry.TOOLS, tool.name, replace(tool, run=slow))
+    monkeypatch.setattr(cfg.tools["get_service_status"], "timeout_s", 5)  # the segment limit fires first
+    status, row, state = await start(runner, fake.ScriptedLLM([status_calls("payments-api")]), max_run_seconds=1)
+    assert (status, row["error"], row["steps"]) == ("timed_out", "max_run_seconds", 1)
+    done = [e for e in await runner.store.list_events(row["id"]) if e["kind"] == "done"]
+    assert [(e["status"], e["attention"]) for e in done] == [("timed_out", "error")]
+
+
+async def test_recursion_limit_ends_limit_exceeded(runner, monkeypatch):
+    monkeypatch.setattr(policy, "recursion_limit", lambda limits: 3)
+    llm = fake.ScriptedLLM([status_calls("payments-api"), fake.final("done")])
+    status, row, _ = await start(runner, llm)
+    assert (status, row["error"]) == ("limit_exceeded", "recursion_limit")
+    done = [e for e in await runner.store.list_events(row["id"]) if e["kind"] == "done"]
+    assert len(done) == 1

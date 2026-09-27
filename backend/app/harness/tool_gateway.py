@@ -71,7 +71,7 @@ async def execute(
             call = {**call, "args": decision.get("args")}  # no args: fails validation, never runs the original
         args, envelope = check_input(tool, call["args"])
     if envelope is not None:
-        await _tool_event(tracer, run_id, call, 0, 0.0, envelope, last=True)
+        await refused(call, envelope, run_id=run_id, tracer=tracer)
         return envelope, 0
 
     ctx = ToolContext(run_id=run_id, tool_call_id=call["id"], store=store, tracer=tracer)
@@ -99,6 +99,11 @@ async def execute(
         await asyncio.sleep(delay)
 
     raise AssertionError("unreachable: the last attempt always returns")
+
+
+async def refused(call: dict, envelope: dict, *, run_id: str, tracer: Tracer) -> None:
+    """The one `tool` event (attempt 0) of a call refused before it ran, here or by the policy checks."""
+    await _tool_event(tracer, run_id, call, 0, 0.0, envelope, last=True)
 
 
 async def _attempt(tool: Tool, args: object, ctx: ToolContext, fault: ToolFault | None, timeout_s: float) -> dict:

@@ -83,6 +83,8 @@ running ──(process restart)──► interrupted ──resume──► runni
 awaiting_approval | interrupted ──cancel──► cancelled
 ```
 
+A run that ends `failed`, `limit_exceeded` or `timed_out` stores an `error` code: `llm_unavailable`, `malformed_reply`, `max_steps`, `max_tool_calls`, `recursion_limit`, `max_run_seconds` or `internal_error` ([docs/DESIGN.md](../docs/DESIGN.md#3-database-design)).
+
 A run executes in **segments**: from start (or resume, or a decision) until it finishes or pauses. Each segment runs as a background task with a per-run lock, so two decisions or resumes never run the same run at once.
 
 - Only the API process runs startup recovery (`running` → `interrupted`). The CLI never does, because it may share the database with a running API.

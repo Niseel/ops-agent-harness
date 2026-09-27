@@ -299,3 +299,43 @@ async def test_generated_ids_never_collide(tracer):
 async def test_whitespace_only_reply_is_malformed(tracer):
     outcome = await turn(tracer, ScriptedLLM([raw(content="   \n")]))
     assert outcome.kind == "malformed" and "empty reply" in outcome.reason
+
+
+# --- run level (T6) ---------------------------------------------------------------------------
+
+STATUS_CALL = ("get_service_status", {"service_name": "payments-api"})
+
+
+async def run_with(runner, items, **options):
+    llm = ScriptedLLM(items)
+    run = await runner.create_run("Check payments-api", options=options or None)
+    status = await runner.run_segment(run["id"], llm_client=llm)
+    return status, await runner.store.get_run(run["id"]), await runner.get_state(run["id"]), llm
+
+
+async def test_malformed_reply_repaired(runner):
+    status, row, state, llm = await run_with(runner, [raw(finish_reason="length"), calls(STATUS_CALL), final("done")])
+    assert status == "completed" and row["steps"] == 3
+    contents = [m.get("content") for m in state["messages"]]
+    assert contents.count(correction("reply was cut off (finish_reason=length)")["content"]) == 1
+    assert [m["role"] for m in state["messages"]] == ["user", "user", "assistant", "tool", "assistant"]
+    assert state["repairs"] == 0  # a valid reply resets the count
+    assert llm.seen[1][-1]["content"].startswith("[harness] previous reply invalid")
+
+
+async def test_two_repairs_then_valid_completes(runner):
+    status, row, state, _ = await run_with(runner, [raw(), raw(finish_reason="length"), final("done")])
+    assert (status, row["final"], row["steps"]) == ("completed", "done", 3)
+
+
+async def test_third_malformed_reply_fails_run(runner):
+    status, row, state, _ = await run_with(runner, [raw(), raw(), raw()])
+    assert (status, row["error"], row["steps"], state["repairs"]) == ("failed", "malformed_reply", 3, 3)
+    done = [e for e in await runner.store.list_events(row["id"]) if e["kind"] == "done"]
+    assert [(e["status"], e["attention"]) for e in done] == [("failed", "error")]
+
+
+async def test_llm_unavailable_fails_run(runner):
+    error = openai.APIConnectionError(request=REQUEST)
+    status, row, state, _ = await run_with(runner, [error, error, error])
+    assert (status, row["error"], row["steps"], state["llm_attempts"]) == ("failed", "llm_unavailable", 1, 3)

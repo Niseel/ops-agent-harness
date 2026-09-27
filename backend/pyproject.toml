@@ -9,6 +9,8 @@ dependencies = [
     "pyyaml",
     "aiosqlite>=0.22.1",
     "openai>=3.19.2,<4",
+    "langgraph>=1.2.12,<2",
+    "langgraph-checkpoint-sqlite>=3.1.1,<4",
 ]
 
 [dependency-groups]

@@ -1,6 +1,6 @@
 ---
 name: harness-code-review-checks
-description: Checks that found real issues when reviewing M1 harness code (log masking, store SQL, tracer, FakePlanner arg limits, openai client); run them on any change to log.py, store.py, tracer.py, llm/ or gateways
+description: Checks that found real issues when reviewing M1 harness code (log masking, store SQL, tracer, FakePlanner arg limits, openai client, saver connection on cancel); run them on any change to log.py, store.py, tracer.py, llm/, gateways, runner.py
 metadata:
   type: feedback
 ---
@@ -33,6 +33,11 @@ Found in the M1 T5 review (2026-09-27):
 - Test names in a task's file can collide with names a later task's Proof rows reserve in the same file (T5 unit `test_limits.py::test_repeat_call_blocked` vs T6's run-level test of that name). Grep the plan's Proof table for every new test name; a later collision invites deleting or overwriting the earlier test.
 - pydantic `strict=True` in a model's config does not reach nested models with their own config (options `faults.times: "2"` or `true` still coerce). Probe nested fields when a coder claims "strict".
 - `raw or {}` turns any falsy non-dict (`[]`, `0`, `""`) into defaults; probe option parsers with falsy wrong types.
+
+Found in the M1 T6 review (2026-09-27):
+
+- The checkpointer's own aiosqlite connection (default isolation level) keeps an open write transaction when a segment is cancelled between `execute` and `commit` in `AsyncSqliteSaver.aput`/`aput_writes` (segment timeout, M3 cancel). Every store write then fails with `database is locked` after busy_timeout, for every run, until the saver commits again. Probe: `create_task(saver.aput(...))`, cancel after 1 loop tick, check `conn.in_transaction`. Fix: `aiosqlite.connect(db_path, isolation_level=None)` for the saver too. Re-check whenever a new connection or cancel path is added (M3 cancel, M4 SSE).
+- LangGraph pulls langsmith through langchain-core: `LANGSMITH_TRACING=true` in the environment would ship run state to LangSmith. Nothing enables it; check it stays documented or forced off.
 
 **Why:** the tester runs the listed tests; these gaps pass them.
 **How to apply:** on every review touching logging, SQL or the tracer, run the probes above in the scratchpad. See also [[spec-adr-config-drift-hotspots]].

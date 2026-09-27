@@ -1,3 +1,4 @@
+import json
 import random
 
 import pytest
@@ -96,3 +97,32 @@ async def test_timeout_after_commit_event_trail(tracer, store, short_timeouts):
         ("retry", "retry", "warn"),
         ("tool", "ok", "success"),
     ]
+
+
+# --- run level (T6) ---------------------------------------------------------------------------
+
+
+async def test_timeout_twice_then_success(runner, search, short_timeouts):
+    run = await runner.create_run(
+        "Why is payments-api slow?", options={"faults": {"get_service_status": {"mode": "timeout", "times": 2}}}
+    )
+    assert await runner.run_segment(run["id"]) == "completed"
+    events = await runner.store.list_events(run["id"])
+    status_attempts = [e for e in events if e["kind"] == "tool" and e["tool"] == "get_service_status"]
+    assert [e["status"] for e in status_attempts] == ["timeout", "timeout", "ok"]
+    assert len([e for e in events if e["kind"] == "retry"]) == 2
+    state = await runner.get_state(run["id"])
+    assert state["tool_attempts"]["get_service_status"] == 3 and state["tool_calls"] == 2
+
+
+async def test_all_attempts_fail_run_continues(runner, search):
+    run = await runner.create_run(
+        "Why is payments-api slow?", options={"faults": {"get_service_status": {"mode": "error", "times": 3}}}
+    )
+    assert await runner.run_segment(run["id"]) == "completed"
+    row = await runner.store.get_run(run["id"])
+    assert row["final"].startswith("Could not get the status of payments-api")
+    state = await runner.get_state(run["id"])
+    results = [json.loads(m["content"]) for m in state["messages"] if m["role"] == "tool"]
+    assert results[-1]["error"]["type"] == "unavailable"
+    assert state["messages"][-1]["role"] == "assistant"  # the LLM took one more step

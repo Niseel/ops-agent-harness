@@ -78,6 +78,18 @@ All timestamps are ISO-8601 UTC with milliseconds.
 
 Run statuses: `running`, `awaiting_approval`, `completed`, `failed`, `limit_exceeded`, `timed_out`, `cancelled`, `interrupted`. Approval statuses: `pending`, `approved`, `rejected`, `edited`, `expired`, `cancelled`.
 
+A run that ends `failed`, `limit_exceeded` or `timed_out` stores one of these codes in `runs.error`:
+
+| `error` | Status | Cause |
+|---|---|---|
+| `max_steps` | `limit_exceeded` | The guard saw `steps >= max_steps` |
+| `max_tool_calls` | `limit_exceeded` | A call was blocked by `max_tool_calls` |
+| `recursion_limit` | `limit_exceeded` | LangGraph's `recursion_limit` fired (backstop) |
+| `llm_unavailable` | `failed` | Every LLM attempt failed, or a non-transient API error |
+| `malformed_reply` | `failed` | More malformed replies in a row than `max_repairs` |
+| `internal_error` | `failed` | Any other exception; the details are only in the log |
+| `max_run_seconds` | `timed_out` | The segment ran longer than `max_run_seconds` |
+
 The knowledge base lives in Qdrant, collection `ops_kb`: one point per runbook section with a `dense` vector, a `bm25` sparse vector (IDF applied by Qdrant) and payload `doc_id, title, section, text, content_hash, embed_model` ([ADR 0006](adr/0006-vector-store-qdrant-no-rerank.md)).
 
 ## 4. Safety controls
@@ -93,6 +105,7 @@ The knowledge base lives in Qdrant, collection `ops_kb`: one point per runbook s
 | Clients asking for more | Limits clamped to `config.yaml`; fault injection only when `ALLOW_FAULT_INJECTION=true` (on by default for local use) |
 | Leaking secrets | Secret values masked in logs and events; never returned by the API |
 | Data sent to external models | Local by default (fake LLM, LM Studio); fixtures are synthetic; cloud providers only when `LLM_*`, `EMBED_*` or `JUDGE_*` point at them |
+| Run state sent to a tracing service | LangGraph installs the LangSmith client, but its tracing is off unless `LANGSMITH_TRACING=true` is set; the harness never sets it |
 
 ## 5. Observability
 
