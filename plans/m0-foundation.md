@@ -53,3 +53,5 @@ Everything a reviewer or a coding agent needs before any harness code: project s
 | T6 review | REQUEST_CHANGES → fixed | API table rule now points at the spec; future items; fault-injection wording; `DATA_DIR`/`CONFIG_PATH`; relative paths from repo root (bug found while writing `.env.example`). Owner created `.env.example` (agents are denied `.env.*`) |
 | T6 commit | b9492d9 | design report, `.env.example`, config path fix |
 | T7 review | REQUEST_CHANGES → APPROVE | round 1: demo trace raced with online eval (evaluate off in the demo), eval events after `done`, `calls` vs `tool_calls`, SSE request could hang newman; round 2 approved |
+| T7 commit | 26eab0e | 32 requests; spec pins response shapes |
+| T8 review | APPROVE | minors fixed: quickstart working directories, exact Postman names, scenario coverage wording |
