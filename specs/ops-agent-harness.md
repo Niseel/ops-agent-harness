@@ -109,7 +109,7 @@ START → guard ──limit hit────────────────�
 | tools | Runs the pending calls one by one through `tool_gateway`, appends one tool message per call. |
 | finalize | Sets the final status and answer; queues online evaluation when enabled. |
 
-Agent state (in the checkpoint): `run_id, objective, messages, pending, decisions, steps, tool_calls, tool_attempts, llm_attempts, call_counts, repairs, incidents, status, final, error`. `steps` counts every LLM call, including malformed ones. `tool_attempts` counts attempts per tool name across the run; `llm_attempts` counts LLM calls for fault injection. Messages are plain OpenAI-style dicts. Run options (limits, faults, LLM mode, evaluate) are stored in `runs.options_json` and loaded into the runtime context at the start of each segment, together with the tracer and the LLM client.
+Agent state (in the checkpoint): `run_id, objective, messages, pending, decisions, steps, tool_calls, tool_attempts, llm_attempts, embed_attempts, call_counts, repairs, incidents, status, final, error`. `steps` counts every LLM call, including malformed ones. `tool_attempts` counts attempts per tool name across the run; `llm_attempts` and `embed_attempts` count LLM calls and query embedding calls for fault injection. Messages are plain OpenAI-style dicts. Run options (limits, faults, LLM mode, evaluate) are stored in `runs.options_json` and loaded into the runtime context at the start of each segment, together with the tracer and the LLM client.
 
 ### Tools
 
@@ -140,7 +140,7 @@ Every tool result that reaches the LLM is an envelope ([0010](../docs/adr/0010-f
 | `unavailable` | Tool or its backend is down | Yes |
 | `bad_output` | Output breaks the output model | No |
 | `rejected` | Operator rejected the call (reason included) | No |
-| `blocked` | Repeat guard or incident cap | No |
+| `blocked` | Repeat guard, `max_tool_calls`, incident cap, or an approval-needing tool reached without a decision | No |
 
 Retries use exponential backoff with full jitter (`retry.base_delay_s`, `retry.max_delay_s`) up to `tools.<name>.max_attempts`. Every attempt is an event. Output longer than `output.max_tool_result_chars` is truncated, and the envelope gets `"truncated": true`.
 
@@ -149,7 +149,7 @@ Retries use exponential backoff with full jitter (`retry.base_delay_s`, `retry.m
 Modes, chosen per run; default from `LLM_DEFAULT` ([0003](../docs/adr/0003-llm-openai-compatible-with-fake.md)):
 
 - `openai`: `openai.AsyncOpenAI` chat completions with tools, against any OpenAI-compatible endpoint (`LLM_*` env vars).
-- `fake`: `FakePlanner`, rule-based. Searches the knowledge base, checks the service named in the objective, and proposes an incident only if the objective asks for one (contains "incident") and the service is `degraded` or `down` (severity from the policy it found). Then it answers.
+- `fake`: `FakePlanner`, rule-based. Searches the knowledge base, checks the service named in the objective, and proposes an incident only if the objective asks for one (contains "incident") and the service is `degraded` or `down` (severity from the policy it found). If a search result contains an instruction to open an incident, it follows it and proposes that incident: it imitates a model that falls for prompt injection, so the approval gate can be shown stopping it. Then it answers.
 - Tests use `ScriptedLLM`: a fixed list of replies.
 
 `llm_gateway` retries API errors and timeouts (`llm.max_attempts`, `llm.timeout_s`); when attempts run out the run fails with `llm_unavailable`. It classifies each reply:
@@ -187,7 +187,8 @@ Tool call ids: when the provider sends no id, or reuses one already seen in the 
 
 - Tool modes: `timeout`, `error` (→ `unavailable`), `bad_output`, `latency` (adds `ms`, default 1000, then returns normally), `timeout_after_commit` (only for `create_incident`: the incident is stored, then the call times out).
 - LLM modes: `malformed`, `timeout`.
-- `times` defaults to 1. Faults hit the first `times` attempts, counted from `tool_attempts` / `llm_attempts` in the checkpoint, so a resume behaves the same.
+- `embeddings` with mode `error`: the embedding call fails, so search runs in `sparse_only` mode.
+- `times` defaults to 1. Faults hit the first `times` attempts, counted from `tool_attempts` / `llm_attempts` / `embed_attempts` in the checkpoint, so a resume behaves the same.
 - Unknown keys or modes return 422. Faults are refused with 422 unless `ALLOW_FAULT_INJECTION=true` (default `true` for local use; set `false` in any shared deployment).
 
 ### Events and logs
@@ -243,7 +244,7 @@ SQLite file `DB_PATH` ([0004](../docs/adr/0004-state-and-database-sqlite.md)): L
 - **Offline**: `evals/kb_golden.jsonl` (`eval.golden_set`, relative to the repo root), lines of `{question, reference, relevant_doc_ids}`. Each question runs in `hybrid`, `dense` and `sparse` modes. Deterministic metrics `hit@3`, `MRR@10` and `recall@3` by `doc_id`; RAGAS `ContextPrecision` and `ContextRecall` when a judge is reachable. The report is stored in `eval_reports`.
 - **Online** (option `evaluate`, default `eval.online_default` when a judge is reachable): after a run finishes, a background job stores in `evals` the context relevance of every search call, and the faithfulness (against all tool outputs of the run) and answer relevancy of the final answer. Faithfulness below `eval.thresholds.faithfulness`, or context relevance below `eval.thresholds.context_relevance`, emits a `warn` event.
 - **Judge**: `JUDGE_*` env vars, defaulting to `LLM_*`. Unreachable → metric `null` with a reason. Evaluation never changes a run's status.
-- **Scenario evals**: `evals/<name>.json` = `{name, objective, llm, faults, decisions, expect: {status, attempts, incidents}}`. `decisions` is a list of `{decision, reason?, args?}` applied in order to the approvals as they appear. `evals/run.sh` starts each scenario through the API, sends the listed decisions, saves `GET /api/runs/{id}/trace`, and `evals/check.sh <scenario> <trace>` grades it with `jq`.
+- **Scenario evals**: `evals/<name>.json` = `{name, objective, llm, limits?, faults?, decisions, expect: {status, attempts?, incidents?, search_mode?}}`. `decisions` is a list of `{decision, reason?, args?}` applied in order to the approvals as they appear. `evals/run.sh` starts each scenario through the API, sends the listed decisions, saves `GET /api/runs/{id}/trace`, and `evals/check.sh <scenario> <trace>` grades it with `jq`.
 
 ### API
 

@@ -1,6 +1,6 @@
 # 0003. LLM: raw OpenAI SDK, any OpenAI-compatible provider, fake by default
 
-Status: Accepted · Date: 2026-09-26 · Changed 2026-09-27: `FakePlanner` proposes an incident only when the objective asks for one ([spec, LLM](../../specs/ops-agent-harness.md#llm)), so plain investigations complete without an approval
+Status: Accepted · Date: 2026-09-26 · Changed 2026-09-27: `FakePlanner` proposes an incident only when the objective asks for one, and follows injected instructions found in search results to demo the approval gate ([spec, LLM](../../specs/ops-agent-harness.md#llm))
 
 ## Context
 

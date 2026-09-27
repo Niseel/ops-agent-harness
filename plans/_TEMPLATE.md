@@ -8,9 +8,9 @@
 2. ...
 
 ## Tasks
-| ID | Task | Files | Skills | Depends on | Parallel |
-|----|------|-------|--------|------------|----------|
-| T1 | ...  | src/... | ai-engineer | - | yes |
+| ID | Task | Files | Skills | Depends on | Parallel | Est. |
+|----|------|-------|--------|------------|----------|------|
+| T1 | ...  | src/... | ai-engineer | - | yes | 1h |
 
 ## Risks
 <e.g. rate limits, migrations, breaking changes.>
