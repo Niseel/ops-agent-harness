@@ -90,10 +90,11 @@ The knowledge base lives in Qdrant, collection `ops_kb`: one point per runbook s
 | Prompt injection in tool output | Tool output is untrusted data in the prompt; the approval gate is the hard stop |
 | Clients asking for more | Limits clamped to `config.yaml`; fault injection only when `ALLOW_FAULT_INJECTION=true` (on by default for local use) |
 | Leaking secrets | Secret values masked in logs and events; never returned by the API |
+| Data sent to external models | Local by default (fake LLM, LM Studio); fixtures are synthetic; cloud providers only when `LLM_*`, `EMBED_*` or `JUDGE_*` point at them |
 
 ## 5. Observability
 
-Every node step, LLM call, tool attempt, retry, approval, evaluation and state-changing API call emits an event `{seq, run_id, t_ms, kind, node, tool, status, attention, msg, data}`. Events are stored in `events`, streamed live (`GET /api/runs/{id}/events`), exported (`GET /api/runs/{id}/trace`) and written to stdout as JSON log lines with `run_id`. `attention` marks what a person should look at; the UI turns it into colour, icon and text ([ADR 0014](adr/0014-observability-trace-events.md)).
+Every node step, LLM call, tool attempt, retry, approval, evaluation and state-changing API call emits an event `{seq, run_id, t_ms, kind, node, tool, status, attention, msg, data}`. Events are stored in `events`, streamed live (`GET /api/runs/{id}/events`), exported (`GET /api/runs/{id}/trace`) and written to stdout as JSON log lines with `run_id`. Each LLM call also records the model, a hash of the system prompt, token counts and latency, and the run detail sums the tokens. `attention` marks what a person should look at; the UI turns it into colour, icon and text ([ADR 0014](adr/0014-observability-trace-events.md)).
 
 ## 6. API
 
@@ -140,6 +141,7 @@ Two sources ([backend/app/config.py](../backend/app/config.py)):
 - **Time limit per segment.** `max_run_seconds` counts each start or resume separately; waiting for an approval is not counted.
 - **No token or cost budget.** Token usage is recorded, not limited.
 - **Search needs services.** Hybrid search needs Qdrant and an embedding endpoint; without embeddings it falls back to BM25. There is no reranker.
+- **No PII handling.** Objectives, tool output and events are stored and sent to the configured models as they are. Use synthetic data or a local model.
 - **Prompt injection is only contained, not detected.** The approval gate stops the only side effect; nothing flags injected text.
 - **Fake LLM.** `FakePlanner` follows fixed rules to show the harness mechanics, not model quality. Some local models write tool calls as text; those are not parsed.
 - **Evaluation quality.** RAGAS scores depend on the judge model; the golden set has about 15 questions.
@@ -150,7 +152,9 @@ Two sources ([backend/app/config.py](../backend/app/config.py)):
 - PostgreSQL checkpointer and a worker queue, so several workers can run and resume runs.
 - Authentication, roles for requesters and approvers, and policy-based approval (for example automatic approval for low severities).
 - OpenTelemetry export of the trace events, and LLM-focused tracing (Langfuse or LangSmith).
-- Token and cost budgets per run.
+- Token and cost budgets per run (usage is already recorded per LLM call).
+- PII detection and redaction before data reaches an external model.
+- A fallback model when the primary LLM is unavailable.
 - Parallel execution of calls that have no side effects.
 - Semantic loop detection (similar, not only identical, calls).
 - Prompt-injection detection on tool output before it reaches the LLM.

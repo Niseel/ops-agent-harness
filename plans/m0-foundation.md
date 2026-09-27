@@ -55,3 +55,6 @@ Everything a reviewer or a coding agent needs before any harness code: project s
 | T7 review | REQUEST_CHANGES → APPROVE | round 1: demo trace raced with online eval (evaluate off in the demo), eval events after `done`, `calls` vs `tool_calls`, SSE request could hang newman; round 2 approved |
 | T7 commit | 26eab0e | 32 requests; spec pins response shapes |
 | T8 review | APPROVE | minors fixed: quickstart working directories, exact Postman names, scenario coverage wording |
+| Skills audit | gap found by the owner | T7 invoked `secure-api-review`. T4 and T6 listed `ai-engineer` but did not invoke it; the reviewer subagent had both skills preloaded (confirmed). Fixed by a retro pass below |
+| Retro: ai-engineer | invoked on spec + DESIGN | gaps fixed: token usage, latency and prompt hash per LLM call; data sent to external models and no PII handling stated; system prompt rules in the spec; fallback model and PII redaction as future work |
+| Retro review | APPROVE | Postman demo checks `usage`; one `llm` event per attempt; `effort: xhigh` is supported by Sonnet 5 (docs: unsupported levels fall back to the highest supported one) |

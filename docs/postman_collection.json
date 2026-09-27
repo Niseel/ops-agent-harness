@@ -273,6 +273,7 @@
                   "} else {",
                   "  pm.collectionVariables.set('pollLeft', 40);",
                   "  pm.test('run is completed', function () { pm.expect(run.status === 'completed').to.be.true; });",
+                  "  pm.test('usage recorded', function () { pm.expect(run.usage).to.have.keys('prompt_tokens', 'completion_tokens'); });",
                   "}"
                 ]
               }

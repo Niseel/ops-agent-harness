@@ -37,7 +37,7 @@ Human decisions on approvals, the REST API with live events, recovery of interru
 |----|-------|
 | AC-1 | `test_api.py::test_create_run_returns_202`, `::test_invalid_body_returns_422`, `::test_faults_refused_when_disabled`; `test_cli.py::test_cli_run_visible_in_api` |
 | AC-3 | `test_approval.py::test_invalid_incident_args_ask_no_approval` |
-| AC-4 | `test_api.py::test_run_detail_has_history` |
+| AC-4 | `test_api.py::test_run_detail_has_history` (includes `usage`) |
 | AC-8 | `test_limits.py::test_approval_wait_not_counted` |
 | AC-9 | `test_approval.py::test_incident_not_created_before_approval`, `::test_approve_creates_one_incident`, `::test_reject_sends_reason_to_llm`, `::test_edit_uses_new_args`, `::test_invalid_edit_returns_422`, `::test_second_decision_returns_409`, `::test_expired_approval_rejects`, `::test_cancel_closes_pending_approval`, `::test_approver_token_required`; `test_api.py::test_list_pending_approvals`, `::test_cancel_final_run_returns_409` |
 | AC-10 | `test_approval.py::test_incident_cap_blocks_without_approval` |

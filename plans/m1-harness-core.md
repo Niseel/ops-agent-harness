@@ -31,7 +31,7 @@ The harness package end to end, without HTTP: a run can start from Python, loop 
 |----|------|-------|--------|------------|----------|------|
 | T1 | State models, SQLite store (all tables), tracer with live subscribers and JSON log, backoff helper, fault options model (AC-4, AC-11) | harness/state.py, store.py, tracer.py, retry.py, tools/faults.py | ai-engineer | - | no | 1.5h |
 | T2 | LLM clients: OpenAI-compatible, `FakePlanner` (spec rules), `ScriptedLLM` | llm/* | ai-engineer | T1 | yes | 1h |
-| T3 | LLM gateway: retries, reply classification, repair up to `max_repairs`, unique tool call ids, LLM faults (AC-7) | harness/llm_gateway.py | ai-engineer | T2 | no | 1h |
+| T3 | LLM gateway: retries, reply classification, repair up to `max_repairs`, unique tool call ids, LLM faults, `llm` event with model, prompt hash, tokens and latency (AC-7, AC-11) | harness/llm_gateway.py | ai-engineer | T2 | no | 1h |
 | T4 | Tool registry, `get_service_status`, `create_incident` (idempotency key), tool gateway with validation, timeout, retry, envelope, truncation and tool faults; the gateway refuses a `requires_approval` tool without an approve or edit decision (`blocked`); fixtures (AC-3, AC-5, AC-6, AC-10, AC-12) | tools/registry.py, status.py, incident.py, harness/tool_gateway.py, data/services.json | ai-engineer | T1 | yes | 2h |
 | T5 | LangGraph loop: guard, agent with pure checks, approval node (`interrupt()` only), tools, finalize; limits and clamping; runner start, segment timeout, pause as `awaiting_approval`; system prompt (AC-2, AC-4, AC-8, AC-9 pause) | harness/loop.py, policy.py, runner.py, prompts/system.md | ai-engineer | T1–T4 | no | 2h |
 
@@ -56,7 +56,7 @@ The harness package end to end, without HTTP: a run can start from Python, loop 
 | AC-8 | `test_limits.py::test_max_steps_stops_run`, `::test_max_tool_calls_blocks_extra_call`, `::test_exact_max_tool_calls_then_answer_completes`, `::test_repeat_call_blocked`, `::test_segment_timeout_ends_timed_out`, `::test_limits_clamped_to_config` |
 | AC-9 (pause, no incident) | `test_loop.py::test_incident_call_pauses_run_without_incident`; the `pending` approval row is checked in M3 |
 | AC-10 | `test_failures.py::test_timeout_after_commit_creates_one_incident` |
-| AC-11 | `test_tracing.py::test_events_have_increasing_seq`, `::test_events_cover_every_step`, `::test_one_done_event_per_run`, `::test_log_line_is_json_with_run_id`, `::test_secrets_masked` |
+| AC-11 | `test_tracing.py::test_events_have_increasing_seq`, `::test_events_cover_every_step`, `::test_one_done_event_per_run`, `::test_log_line_is_json_with_run_id`, `::test_secrets_masked`; `test_llm_gateway.py::test_llm_event_has_usage_and_prompt_sha` |
 | AC-12 | `test_tools.py::test_tool_schemas_exposed`, `::test_unknown_service_not_found` |
 
 ## Pipeline log

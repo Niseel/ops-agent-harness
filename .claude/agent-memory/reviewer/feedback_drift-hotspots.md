@@ -17,6 +17,7 @@ Drift found in the first spec review (2026-09-27), worth re-checking on later ch
 - The `embeddings` fault key (ADR 0012 note) has no attempt counter in the spec and is easy to miss in M2 (tools/kb.py).
 - Online evaluation runs after `finalize`, so its `eval` events come after the `done` event, but SSE "closes after done". Any test or UI that assumes `done` is the last event is racy when a judge is reachable. LM Studio is the default judge, so it usually is.
 - Response shapes: the `runs` summary has `tool_calls` as a count, while the run detail used the same key for a list.
+- API skill rule 7: any change to the spec's API table (even adding a response field such as `usage`) needs a docs/postman_collection.json touch in the same commit, or a stated reason why none is needed.
 - Resolution pattern the owner accepts: clarifications to an accepted ADR go in a status-line note plus a note on its row in docs/adr/README.md (as done for 0008, 0010, 0011, 0017). When a spec change alters behaviour an ADR describes, check that the ADR got such a note.
 
 **Why:** accepted ADRs cannot be rewritten (docs/adr/README.md), so drift piles up unless each follow-up ADR or status note is checked.

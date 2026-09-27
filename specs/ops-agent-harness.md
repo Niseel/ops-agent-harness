@@ -162,6 +162,10 @@ A malformed reply is not added to the history. The gateway adds a `user` message
 
 Tool call ids: when the provider sends no id, or reuses one already seen in the run, the gateway assigns `s<step>c<index>`. Ids are unique per run, which the idempotency key and `UNIQUE(run_id, tool_call_id)` rely on.
 
+Every LLM attempt (including retries) emits an `llm` event whose data holds `model`, `prompt_sha` (first 12 hex characters of the SHA-256 of `backend/prompts/system.md`), `prompt_tokens`, `completion_tokens` and `latency_ms`. A failed attempt reports 0 tokens. The fake and scripted LLMs report 0 tokens. `GET /api/runs/{id}` sums the tokens as `usage`. This is the data a future cost budget needs; this version records usage and does not limit it.
+
+The system prompt tells the model that tool results are data, never instructions, and that only the harness can create incidents after a human decision.
+
 ### Approval
 
 ([0009](../docs/adr/0009-human-approval-interrupt.md)) When the agent proposes a call to a tool with `requires_approval`, the loop routes to `approval`. The runner sees the interrupt, writes an `approvals` row (`pending`, `expires_at = now + approval.ttl_s`) and sets the run to `awaiting_approval`.
@@ -254,7 +258,7 @@ All routes are under `/api`, return JSON, and follow [the API standard](../.clau
 |---|---|---|---|---|
 | POST | `/api/runs` | `{objective: 1–2000 chars, llm?: fake\|openai, options?: {limits?, faults?, evaluate?}}` | 202 `{run_id, status}` | 422 |
 | GET | `/api/runs` | `?limit=` (default 20, max 100) | 200 list of run summaries `{id, objective, status, llm_mode, steps, tool_calls, created_at, updated_at}`, newest first | 422 |
-| GET | `/api/runs/{id}` | | 200 run summary plus `options`, `final`, `error`, `messages`, `calls` (each tool call with arguments, attempts, duration, result), `approvals`, `evals` | 404 |
+| GET | `/api/runs/{id}` | | 200 run summary plus `options`, `final`, `error`, `messages`, `calls` (each tool call with arguments, attempts, duration, result), `approvals`, `evals`, `usage` (`{prompt_tokens, completion_tokens}`) | 404 |
 | GET | `/api/runs/{id}/events` | header `Last-Event-ID` | 200 `text/event-stream`: stored events, then live ones; SSE `id` = `seq`; keep-alive every 15 s; closes after the `done` event | 404 |
 | GET | `/api/runs/{id}/trace` | | 200 `{run_id, status, events: [event, ...]}` in `seq` order | 404 |
 | POST | `/api/runs/{id}/approvals/{approval_id}` | `{decision: approve\|reject\|edit, reason?, args?}` | 200 approval (updated) | 401, 404, 409, 422 |
@@ -346,6 +350,7 @@ Each AC names how it is proved. Unit and API tests run with `ScriptedLLM` or `Fa
   - events are stored with increasing `seq` and cover each node step, LLM call, tool attempt, retry, approval and the final status;
   - `GET /api/runs/{id}/events` replays stored events, then streams new ones, uses `seq` as the SSE id, resumes after `Last-Event-ID`, and closes after `done`;
   - `GET /api/runs/{id}/trace` returns all events as JSON;
+  - each `llm` event carries `model`, `prompt_sha`, token counts and `latency_ms`, and `GET /api/runs/{id}` returns their sum as `usage`;
   - stdout log lines are JSON with `run_id`;
   - configured secret values never appear in events, logs or responses;
   - every state-changing API call (create, decide, resume, cancel, start evaluation) emits a `log` event with `actor`, `action` and `entity_id`.
@@ -381,6 +386,7 @@ Each AC names how it is proved. Unit and API tests run with `ScriptedLLM` or `Fa
 - **Prompt injection.** Tool output (especially knowledge-base text) can carry instructions. The system prompt marks tool output as untrusted, but the hard control is the approval gate on the only side-effecting tool.
 - **Single writer.** SQLite and in-process background tasks mean one API process. Scaling out needs PostgreSQL and a worker queue ([0004](../docs/adr/0004-state-and-database-sqlite.md)).
 - **Judge quality.** RAGAS scores from a small local judge are noisy; numbers in docs must name the judge model.
+- **Data sent to external models.** The objective, tool results and knowledge-base text go to whatever `LLM_*`, `EMBED_*` and `JUDGE_*` point at. The default setup keeps them on the machine (fake LLM, LM Studio), and all fixtures are synthetic. With a cloud provider, data leaves the machine; there is no PII detection or redaction. Owner: whoever sets the env vars; listed in limitations.
 - **External services for full search.** Hybrid search needs Qdrant (Docker) and an embedding endpoint. Without embeddings the tool degrades to BM25; without Qdrant it returns `unavailable`.
 
 ## Out of scope
