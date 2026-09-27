@@ -74,6 +74,8 @@ eval_reports              golden-set runs, not tied to a run
 | `eval_reports` | `id`, `created_at`, `models_json`, `config_json`, `summary_json`, `rows_json` | Offline golden-set reports, compared across runs |
 | `incidents` | `id`, `idempotency_key` (unique), `run_id`, `title`, `description`, `severity`, `status` | The mock external system. A retried call returns the same incident |
 
+All timestamps are ISO-8601 UTC with milliseconds.
+
 Run statuses: `running`, `awaiting_approval`, `completed`, `failed`, `limit_exceeded`, `timed_out`, `cancelled`, `interrupted`. Approval statuses: `pending`, `approved`, `rejected`, `edited`, `expired`, `cancelled`.
 
 The knowledge base lives in Qdrant, collection `ops_kb`: one point per runbook section with a `dense` vector, a `bm25` sparse vector (IDF applied by Qdrant) and payload `doc_id, title, section, text, content_hash, embed_model` ([ADR 0006](adr/0006-vector-store-qdrant-no-rerank.md)).
@@ -94,7 +96,7 @@ The knowledge base lives in Qdrant, collection `ops_kb`: one point per runbook s
 
 ## 5. Observability
 
-Every node step, LLM call, tool attempt, retry, approval, evaluation and state-changing API call emits an event `{seq, run_id, t_ms, kind, node, tool, status, attention, msg, data}`. Events are stored in `events`, streamed live (`GET /api/runs/{id}/events`), exported (`GET /api/runs/{id}/trace`) and written to stdout as JSON log lines with `run_id`. Each LLM call also records the model, a hash of the system prompt, token counts and latency, and the run detail sums the tokens. `attention` marks what a person should look at; the UI turns it into colour, icon and text ([ADR 0014](adr/0014-observability-trace-events.md)).
+Every node step, LLM call, tool attempt, retry, approval, evaluation and state-changing API call emits an event `{seq, run_id, t_ms, kind, node, tool, status, attention, msg, data}`. Events are stored in `events`, streamed live (`GET /api/runs/{id}/events`), exported (`GET /api/runs/{id}/trace`) and written to stdout as JSON log lines with `run_id`. `t_ms` is Unix epoch milliseconds; `created_at` holds the same moment in ISO-8601 UTC; the UI computes relative times. Each LLM call also records the model, a hash of the system prompt, token counts and latency, and the run detail sums the tokens. `attention` marks what a person should look at; the UI turns it into colour, icon and text ([ADR 0014](adr/0014-observability-trace-events.md)).
 
 ## 6. API
 

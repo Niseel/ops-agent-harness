@@ -205,6 +205,8 @@ kind ∈ stage | llm | tool | retry | approval | eval | log | error | done
 attention ∈ null | info | warn | error | success
 ```
 
+`t_ms` is Unix epoch milliseconds.
+
 Events are appended to the `events` table and published to live subscribers. The same events go to stdout as JSON log lines with `run_id`. Known secret values are masked. Audit events for state-changing API calls use kind `log` with `data = {actor, action, entity_id}`; `run_id` is empty for actions that are not about one run (starting an evaluation).
 
 `attention` marks what a human should notice. The UI picks the colour from `attention` and `kind` ([0015](../docs/adr/0015-ui-run-console-not-chat.md)):
