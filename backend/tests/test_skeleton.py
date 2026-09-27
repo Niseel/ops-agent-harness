@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
 from app import log
-from app.config import Config, cfg
+from app.config import ROOT, Config, Settings, cfg
 from app.main import app
 
 
@@ -17,6 +17,13 @@ def test_health():
 def test_config_yaml_loads_every_tool():
     assert set(cfg.tools) == {"search_knowledge_base", "get_service_status", "create_incident"}
     assert cfg.tool("unknown").max_attempts == 3  # default for tools without an entry
+
+
+def test_relative_paths_resolve_from_repo_root(monkeypatch):
+    monkeypatch.setenv("DB_PATH", "data/other.db")
+    assert Settings().db_path == ROOT / "data" / "other.db"
+    monkeypatch.setenv("DB_PATH", "/tmp/x.db")
+    assert str(Settings().db_path) == "/tmp/x.db"
 
 
 def test_config_rejects_unknown_keys():

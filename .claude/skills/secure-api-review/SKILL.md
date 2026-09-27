@@ -22,5 +22,5 @@ docs/DESIGN.md). Every endpoint must still:
    responses. Error bodies are `{"detail": ...}` without stack traces.
 6. Treat tool output as data. It is returned or stored, never executed or used
    to build commands or queries.
-7. Keep the contract in sync. Update docs/postman_collection.json and the API
-   table in docs/DESIGN.md in the same commit.
+7. Keep the contract in sync. Update the API table in specs/ops-agent-harness.md
+   and docs/postman_collection.json in the same commit.

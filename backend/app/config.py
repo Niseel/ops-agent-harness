@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -49,6 +49,12 @@ class Settings(BaseSettings):
 
     data_dir: Path = ROOT / "data"
     config_path: Path = ROOT / "config.yaml"
+
+    @field_validator("db_path", "data_dir", "config_path")
+    @classmethod
+    def _from_repo_root(cls, p: Path) -> Path:
+        # Relative paths in .env mean "from the repo root", whatever directory the app starts in.
+        return p if p.is_absolute() else ROOT / p
 
     def secrets(self) -> list[str]:
         """Values the logger must never print."""

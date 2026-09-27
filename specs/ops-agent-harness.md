@@ -289,7 +289,7 @@ A run console, not a chat ([0015](../docs/adr/0015-ui-run-console-not-chat.md), 
 ### Configuration
 
 - `config.yaml` (behaviour): `limits`, `llm`, `retry`, `tools`, `kb`, `bm25`, `approval`, `output`, `eval`. Unknown keys fail at startup.
-- Environment (deployment): `LLM_*`, `EMBED_*`, `JUDGE_*`, `QDRANT_*`, `DB_PATH`, `LOG_LEVEL`, `LOG_FORMAT`, `ALLOW_FAULT_INJECTION`, `APPROVER_TOKEN`, `CORS_ORIGINS`. Each variable is described in `docs/DESIGN.md` and `.env.example`.
+- Environment (deployment): `LLM_*`, `EMBED_*`, `JUDGE_*`, `QDRANT_*`, `DB_PATH`, `LOG_LEVEL`, `LOG_FORMAT`, `ALLOW_FAULT_INJECTION`, `APPROVER_TOKEN`, `CORS_ORIGINS`, `DATA_DIR`, `CONFIG_PATH`. Each variable is described in `docs/DESIGN.md` and `.env.example`.
 
 ### Alternatives rejected
 
