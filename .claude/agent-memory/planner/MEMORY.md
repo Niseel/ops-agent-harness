@@ -1,3 +1,3 @@
-- [Plan checks](feedback_plan-checks.md) — gaps found in M1 phase 1: tests needing later tasks, shared files, hidden deps, handoffs, demo facts
-- [Library notes pointer](reference_library-notes.md) — LangGraph/checkpoint-sqlite/openai facts live in plans/m1-harness-core.md; key ones for M2/M3
+- [Plan checks](feedback_plan-checks.md) — M1/M2 gaps (task-order tests, tests changed on purpose, lock-aware deps, telemetry); defaults-first questions work
+- [Library notes pointer](reference_library-notes.md) — library facts live in the M1 and M2 plans (LangGraph, openai, qdrant-client, ragas pin)
 - [Private name never in repo](project_private-name.md) — earlier private project's name must not appear in any repo file or this memory dir
