@@ -189,7 +189,7 @@ The system prompt tells the model that tool results are data, never instructions
 
 ([0012](../docs/adr/0012-fault-injection-per-run.md)) `options.faults` in the run request, for example `{"get_service_status": {"mode": "timeout", "times": 2}, "llm": {"mode": "malformed", "times": 1}}`.
 
-- Tool modes: `timeout`, `error` (→ `unavailable`), `bad_output`, `latency` (adds `ms`, default 1000, then returns normally), `timeout_after_commit` (only for `create_incident`: the incident is stored, then the call times out).
+- Tool modes: `timeout`, `error` (→ `unavailable`), `bad_output` (the tool does not run), `latency` (adds `ms`, default 1000, then returns normally), `timeout_after_commit` (only for `create_incident`: the incident is stored, then the call times out).
 - LLM modes: `malformed`, `timeout`.
 - `embeddings` with mode `error`: the embedding call fails, so search runs in `sparse_only` mode.
 - `times` defaults to 1. Faults hit the first `times` attempts, counted from `tool_attempts` / `llm_attempts` / `embed_attempts` in the checkpoint, so a resume behaves the same.

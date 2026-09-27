@@ -3,8 +3,11 @@ import random
 import pytest
 from pydantic import ValidationError
 
+from app.harness import tool_gateway
 from app.harness.retry import backoff
-from app.tools.faults import Faults, hits
+from app.tools.faults import Faults, ToolFault, hits
+
+INCIDENT = {"title": "orders-db is down", "description": "Every query fails since 09:00.", "severity": "SEV1"}
 
 
 def test_backoff_full_jitter_bounds():
@@ -52,3 +55,44 @@ def test_fault_defaults_are_times_1_and_ms_1000():
     faults = Faults.model_validate({"get_service_status": {"mode": "latency"}, "llm": {"mode": "timeout"}})
     assert (faults.get_service_status.times, faults.get_service_status.ms) == (1, 1000)
     assert faults.llm.times == 1
+
+
+@pytest.mark.parametrize(("times", "ok", "attempts"), [(1, True, 2), (2, False, 2)])
+async def test_timeout_after_commit_creates_one_incident(tracer, store, short_timeouts, times, ok, attempts):
+    envelope, made = await tool_gateway.execute(
+        {"id": "s2c0", "name": "create_incident", "args": INCIDENT},
+        run_id="r1",
+        decision={"decision": "approve"},
+        attempts_before=0,
+        fault=ToolFault(mode="timeout_after_commit", times=times),
+        store=store,
+        tracer=tracer,
+    )
+    assert (envelope["ok"], made) == (ok, attempts)
+    [row] = await store.list_incidents()  # the retry found the committed row by its key
+    assert row["idempotency_key"] == "r1:s2c0"
+    if ok:
+        assert envelope["data"]["incident_id"] == row["id"]
+    else:
+        assert envelope["error"]["type"] == "timeout"
+
+
+async def test_timeout_after_commit_event_trail(tracer, store, short_timeouts):
+    # times=1: attempt 1 commits then hangs into a timeout (no attention, it will be retried);
+    # the retry is a warning; attempt 2 finds the committed row and succeeds (no attention).
+    envelope, made = await tool_gateway.execute(
+        {"id": "s2c0", "name": "create_incident", "args": INCIDENT},
+        run_id="r1",
+        decision={"decision": "approve"},
+        attempts_before=0,
+        fault=ToolFault(mode="timeout_after_commit", times=1),
+        store=store,
+        tracer=tracer,
+    )
+    assert envelope["ok"] and made == 2
+    trail = [(e["kind"], e["status"], e["attention"]) for e in await store.list_events("r1")]
+    assert trail == [
+        ("tool", "timeout", None),
+        ("retry", "retry", "warn"),
+        ("tool", "ok", "success"),
+    ]
