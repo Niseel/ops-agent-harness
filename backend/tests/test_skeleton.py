@@ -5,7 +5,7 @@ import pytest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
-from app import log
+from app import log, main
 from app.config import ROOT, Config, Settings, cfg
 from app.main import app
 
@@ -13,6 +13,21 @@ from app.main import app
 def test_health():
     with TestClient(app) as client:  # the lifespan opens the runner that health reads
         assert client.get("/api/health").json()["status"] == "ok"
+
+
+async def test_built_ui_served_after_api_routes(api, tmp_path):
+    (tmp_path / "index.html").write_text("<!doctype html><title>UI</title>")
+    main.serve_ui(tmp_path)
+    try:
+        page = await api.get("/")
+        assert page.status_code == 200
+        assert page.headers["content-type"].startswith("text/html")  # a developer's own build may be mounted first
+        tools = await api.get("/api/tools")
+        assert tools.status_code == 200 and isinstance(tools.json(), list)
+        missing = await api.get("/api/nope")
+        assert (missing.status_code, missing.json()) == (404, {"detail": "Not Found"})
+    finally:
+        main.app.router.routes.pop()
 
 
 def test_config_yaml_loads_every_tool():

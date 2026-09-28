@@ -23,6 +23,8 @@ In a second terminal, the UI on http://localhost:4200 (it calls the API on :8000
 cd frontend && npm ci && npm start
 ```
 
+With Docker only (API and UI on http://localhost:8000, fake LLM): `docker compose --profile app up --build`.
+
 Tests:
 
 ```bash

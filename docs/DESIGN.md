@@ -137,7 +137,7 @@ Two sources ([backend/app/config.py](../backend/app/config.py)):
 | `JUDGE_JSON_MODE` | `json_schema` | How the judge is forced to return JSON: `json_schema`, `json`, `md_json`, `tools` (another value stops the app at startup) |
 | `QDRANT_URL` | `http://localhost:6333` | Qdrant server |
 | `QDRANT_API_KEY` | empty | Qdrant Cloud key |
-| `DB_PATH` | `data/harness.db` | SQLite file for state, history and the mock incident system |
+| `DB_PATH` | `data/harness.db` | SQLite file for state, history and the mock incident system; `/app/state/harness.db` in the Docker image, kept in a volume |
 | `LOG_LEVEL` | `INFO` | Log level |
 | `LOG_FORMAT` | `json` | `json` (one object per line) or `text` |
 | `ALLOW_FAULT_INJECTION` | `true` | Accept `faults` in run requests. Set `false` in any shared deployment |
@@ -165,6 +165,7 @@ Two sources ([backend/app/config.py](../backend/app/config.py)):
 - **Live streams and shutdown.** uvicorn waits for open connections before it stops; the run command passes `--timeout-graceful-shutdown 5`, so an open event stream cannot hold it.
 - **The judge must answer in plain JSON.** Reasoning models (for example `qwen3.5-9b` in LM Studio) put their answer in a separate reasoning field and leave the content empty, so RAGAS gets nothing to parse. Use a non-reasoning model for `JUDGE_MODEL`, or turn thinking off.
 - **UI refresh.** The open run updates live. The runs list, the approval inbox and the open run's summary refresh every 5 s and on the open run's approval and done events, so an approval of another run can take 5 s to appear. The UI has no cancel or resume button; use the API or the CLI.
+- **Docker.** `docker compose --profile app up --build` runs the API and the built UI on :8000 next to Qdrant, both published on 127.0.0.1 only (the API has no authentication). Inside the container `localhost` is the container, so with the default settings the Docker demo runs the fake LLM, BM25-only search and no online evaluation. The container reads the host's `.env` too; only `QDRANT_URL` and `DB_PATH` are replaced. So `LLM_DEFAULT`, `DATA_DIR` and `CONFIG_PATH` set there apply in the container: keep the paths relative. To use LM Studio from the container, set `LLM_BASE_URL`, `EMBED_BASE_URL` and `JUDGE_BASE_URL` to `http://host.docker.internal:1234/v1` in `.env` (Docker Desktop); a host API reads the same file, so run one or the other. The container and a host API share Qdrant's `ops_kb` collection. After editing `data/kb`, rebuild the image: otherwise the container indexes its older copy without dense vectors, and search is `sparse_only` until a host API starts again and re-indexes.
 - **Crash between a write and its event.** A crash right after an approval row or a final row is written can leave it without its `approval` or `done` event. The approval still appears in the approvals list, and the event stream ends on a final run row.
 
 ## 9. Future improvements

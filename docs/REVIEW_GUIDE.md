@@ -27,7 +27,7 @@ Then pick one:
 
 - **Postman / newman** (from the repo root): `npx newman run docs/postman_collection.json --folder "1. Demo flow: create → approve → trace"` creates a run, approves the incident and checks the trace.
 - **CLI** (from `backend/`): `uv run python -m app.cli run "payments-api is returning 5xx errors. Investigate and open an incident if needed."` and answer the approval prompt.
-- **UI** (from the repo root): `cd frontend && npm ci && npm start`, open http://localhost:4200. With Docker only: `docker compose --profile app up --build`, open http://localhost:8000 (M5).
+- **UI** (from the repo root): `cd frontend && npm ci && npm start`, open http://localhost:4200. With Docker only: `docker compose --profile app up --build`, open http://localhost:8000.
 
 ## 2. Requirement matrix
 
