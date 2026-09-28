@@ -49,6 +49,11 @@ Found in the M2 T4 review (2026-09-27), carry into M3/M4:
 - Spec attention table names only "Judge unreachable" for `eval`+`info`, but every null (error, NaN, no contexts) gives `info`. M4 maps from that table.
 - `evaluate_run` probes the judge (up to 2 s) even when there is nothing to score (empty state, no search, no final).
 
+Found in the M3 T1 review (2026-09-28), carry into T3/T4/T5:
+
+- WAL stale snapshot on the shared store connection: a read written as `async with db.execute(...) as cur: await cur.fetchall()` is 2-3 queued aiosqlite jobs. If the checkpointer's connection commits between them, any store write queued in that window (autocommit or `BEGIN IMMEDIATE`) fails at once with `database is locked` (SQLITE_BUSY_SNAPSHOT skips busy_timeout). Stress probe: two coroutines looping `get_run`/`list_events`, one looping writes on a second aiosqlite connection, one looping `insert_event`: 1-6 of 300 writes failed. With reads as one job (`execute_fetchall`) 0 of 300. Re-run this probe whenever a read path or connection changes (API, SSE replay, health).
+- `Store.close()` during a shielded transaction: the connection closes mid-transaction (SQLite rolls back; state stays consistent, the shield's promise does not). Fix: `close()` takes `_write` first.
+
 **Why:** the tester runs the listed tests; these gaps pass them.
 **How to apply:** on every review touching logging, SQL or the tracer, run the probes above in the scratchpad. See also [[spec-adr-config-drift-hotspots]].
 
