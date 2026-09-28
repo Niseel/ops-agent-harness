@@ -122,3 +122,9 @@ Found in the M4 T3 review (2026-09-28), carry into T4/T5/T6 (any async UI callba
 - LM Studio judge (qwen 9B) took over 5 min for 3 metrics and gave NaN: the 2 min badge poll ends first in local demos (plan risk, accepted).
 - Frontend specs with fake timers need `vi.useFakeTimers({ shouldAdvanceTime: true })`, else zoneless `whenStable()` hangs 5 s per test.
 - A running tester may add spec files during the review: re-run the commands on the final tree before reporting failures.
+
+Found in the M4 T4 review (2026-09-28), carry into T5/T6 UI work:
+
+- Hand-placed SVG layouts (`flow.ts`): check rect overlaps with a quick `node -e` pairwise AABB test over `{x, y}` plus NODE_W/NODE_H; T4 had `kb.embed` and `kb.dense` overlapping by 16 px. Tests only count nodes, never geometry.
+- Page-level masks over store views drift apart: T4 masked `activeNode` by run-detail status (interrupted/final lights nothing) but not `nowText`, so an interrupted run still reads `NOW <tool>(...) attempt n`. When one view gets a status mask, check the sibling views (NOW, budget, console) for the same rule.
+- Run detail `options.limits` is the full clamped `RunOptions.model_dump` (every key present), so "no meter when a limit is missing" is dead-path only.

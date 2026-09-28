@@ -273,4 +273,314 @@ describe('RunsPage', () => {
     await vi.advanceTimersByTimeAsync(10_000);
     expect(traceCalls).toBe(1); // the old chain did not go on
   });
+
+  describe('NOW bar', () => {
+    it('shows the tool, args and attempt while a call runs', async () => {
+      stubFetch({ detail: () => ({ id: 'r1', status: 'running', options: { limits: {} } }) });
+      const fixture = TestBed.createComponent(RunsPage);
+      await fixture.whenStable();
+      fixture.componentInstance.open('r1');
+      await fixture.whenStable();
+      const source = FakeEventSource.all.at(-1)!;
+      source.send(
+        ev('llm', {
+          node: 'agent',
+          data: {
+            tool_calls: [
+              { id: 'c1', name: 'get_service_status', args: { service: 'payments-api' } },
+            ],
+          },
+        }),
+      );
+      source.send(ev('stage', { node: 'tools' }));
+      await fixture.whenStable();
+
+      const root = fixture.nativeElement as HTMLElement;
+      const now = root.querySelector('#now')!.parentElement!;
+      expect(now.textContent).toContain(
+        'NOW get_service_status({"service":"payments-api"}) attempt 1',
+      );
+    });
+
+    it('shows the status word, not a running call, for an interrupted run', async () => {
+      stubFetch({ detail: () => ({ id: 'r1', status: 'interrupted', options: { limits: {} } }) });
+      const fixture = TestBed.createComponent(RunsPage);
+      await fixture.whenStable();
+      fixture.componentInstance.open('r1');
+      await fixture.whenStable();
+      const source = FakeEventSource.all.at(-1)!;
+      source.send(
+        ev('llm', {
+          node: 'agent',
+          data: { tool_calls: [{ id: 'c1', name: 'get_service_status', args: {} }] },
+        }),
+      );
+      source.send(ev('stage', { node: 'tools' }));
+      await fixture.whenStable();
+
+      expect(fixture.componentInstance.store().now().tool).toBe('get_service_status');
+      const root = fixture.nativeElement as HTMLElement;
+      const now = root.querySelector('#now')!.parentElement!;
+      expect(now.textContent).not.toContain('NOW');
+      expect(now.textContent).toContain('interrupted');
+    });
+
+    it('shows the text alone when nothing is running', async () => {
+      stubFetch({ detail: () => ({ id: 'r1', status: 'running', options: { limits: {} } }) });
+      const fixture = TestBed.createComponent(RunsPage);
+      await fixture.whenStable();
+      fixture.componentInstance.open('r1');
+      await fixture.whenStable();
+      const source = FakeEventSource.all.at(-1)!;
+      source.send(ev('stage', { node: 'guard', msg: 'guard checked the budget' }));
+      await fixture.whenStable();
+
+      const root = fixture.nativeElement as HTMLElement;
+      const now = root.querySelector('#now')!.parentElement!;
+      expect(now.textContent).toContain('guard checked the budget');
+      expect(now.textContent).not.toContain('NOW');
+    });
+
+    it('shows no attempt number while an approval is pending', async () => {
+      stubFetch({
+        detail: () => ({ id: 'r1', status: 'awaiting_approval', options: { limits: {} } }),
+      });
+      const fixture = TestBed.createComponent(RunsPage);
+      await fixture.whenStable();
+      fixture.componentInstance.open('r1');
+      await fixture.whenStable();
+      const source = FakeEventSource.all.at(-1)!;
+      source.send(
+        ev('approval', {
+          node: 'approval',
+          tool: 'create_incident',
+          status: 'pending',
+          msg: 'awaiting approval',
+          data: { tool: 'create_incident', args: { title: 'payments-api down' } },
+        }),
+      );
+      await fixture.whenStable();
+
+      const root = fixture.nativeElement as HTMLElement;
+      const now = root.querySelector('#now')!.parentElement!;
+      expect(now.textContent).toContain(
+        'NOW create_incident({"title":"payments-api down"}) · awaiting approval',
+      );
+      expect(now.textContent).not.toContain('attempt');
+    });
+  });
+
+  describe('console', () => {
+    async function openWithEvents() {
+      stubFetch({ detail: () => ({ id: 'r1', status: 'running', options: { limits: {} } }) });
+      const fixture = TestBed.createComponent(RunsPage);
+      await fixture.whenStable();
+      fixture.componentInstance.open('r1');
+      await fixture.whenStable();
+      const source = FakeEventSource.all.at(-1)!;
+      source.send(ev('stage', { node: 'guard' }));
+      source.send(
+        ev('tool', {
+          node: 'tools',
+          tool: 'get_service_status',
+          status: 'ok',
+          data: { result: { ok: true, data: { service: 'payments-api', status: 'degraded' } } },
+        }),
+      );
+      source.send(
+        ev('tool', {
+          node: 'tools',
+          tool: 'search_knowledge_base',
+          status: 'timeout',
+          attention: 'error',
+          msg: 'search timed out',
+        }),
+      );
+      await fixture.whenStable();
+      return fixture;
+    }
+
+    it('shows one line per event with offset seconds, kind, node or tool, and the result text', async () => {
+      const fixture = await openWithEvents();
+      const root = fixture.nativeElement as HTMLElement;
+      const lines = [...root.querySelectorAll('.console-lines li')];
+      expect(lines.length).toBe(3);
+      expect(lines[0].textContent).toContain('0.00');
+      expect(lines[0].textContent).toContain('stage');
+      expect(lines[0].textContent).toContain('guard');
+      expect(lines[1].textContent).toContain('1.00');
+      expect(lines[1].textContent).toContain('get_service_status');
+      expect(lines[1].textContent).toContain('payments-api degraded');
+      expect(lines[2].textContent).toContain('search_knowledge_base');
+      expect(lines[2].textContent).toContain('error');
+    });
+
+    it('filters to events with a tool', async () => {
+      const fixture = await openWithEvents();
+      const root = fixture.nativeElement as HTMLElement;
+      const toolsButton = [...root.querySelectorAll('button')].find(
+        (b) => b.textContent?.trim() === 'Tools',
+      )!;
+      toolsButton.click();
+      await fixture.whenStable();
+      const lines = [...root.querySelectorAll('.console-lines li')];
+      expect(lines.length).toBe(2);
+      expect(lines.some((line) => line.textContent?.includes('stage'))).toBe(false);
+      expect(toolsButton.getAttribute('aria-pressed')).toBe('true');
+    });
+
+    it('filters to events with attention', async () => {
+      const fixture = await openWithEvents();
+      const root = fixture.nativeElement as HTMLElement;
+      const attentionButton = [...root.querySelectorAll('button')].find(
+        (b) => b.textContent?.trim() === 'Attention',
+      )!;
+      attentionButton.click();
+      await fixture.whenStable();
+      const lines = [...root.querySelectorAll('.console-lines li')];
+      expect(lines.length).toBe(1);
+      expect(lines[0].textContent).toContain('search_knowledge_base');
+      expect(lines[0].textContent).toContain('error');
+    });
+  });
+
+  describe('budget meters', () => {
+    it('shows a meter with used and max for steps, tool calls and seconds', async () => {
+      stubFetch({
+        detail: () => ({
+          id: 'r1',
+          status: 'running',
+          options: { limits: { max_steps: 10, max_tool_calls: 5, max_run_seconds: 60 } },
+        }),
+      });
+      const fixture = TestBed.createComponent(RunsPage);
+      await fixture.whenStable();
+      fixture.componentInstance.open('r1');
+      await fixture.whenStable();
+      const source = FakeEventSource.all.at(-1)!;
+      source.send(ev('stage', { node: 'guard', data: { steps: 3, tool_calls: 2 } }));
+      await fixture.whenStable();
+
+      const root = fixture.nativeElement as HTMLElement;
+      const meters = [...root.querySelectorAll('meter')];
+      expect(meters.length).toBe(3);
+      expect(root.textContent).toContain('steps 3 / 10');
+      expect(root.textContent).toContain('tool calls 2 / 5');
+      expect(meters[0].getAttribute('max')).toBe('10');
+      expect(meters[0].getAttribute('value')).toBe('3');
+    });
+
+    it('shows no meter when the run detail has no limits', async () => {
+      stubFetch({
+        detail: () => ({ id: 'r1', status: 'running', options: { limits: {} } }),
+      });
+      const fixture = TestBed.createComponent(RunsPage);
+      await fixture.whenStable();
+      fixture.componentInstance.open('r1');
+      await fixture.whenStable();
+
+      const root = fixture.nativeElement as HTMLElement;
+      expect(root.querySelectorAll('meter').length).toBe(0);
+      expect(root.textContent).toContain('Open a run to see its budget.');
+    });
+  });
+
+  describe('attention list', () => {
+    it('lists icon, word, msg and local time, newest first', async () => {
+      stubFetch({ detail: () => ({ id: 'r1', status: 'running', options: { limits: {} } }) });
+      const fixture = TestBed.createComponent(RunsPage);
+      await fixture.whenStable();
+      fixture.componentInstance.open('r1');
+      await fixture.whenStable();
+      const source = FakeEventSource.all.at(-1)!;
+      source.send(
+        ev('retry', {
+          node: 'tools',
+          tool: 'get_service_status',
+          attention: 'warn',
+          msg: 'retrying after a timeout',
+        }),
+      );
+      source.send(
+        ev('tool', {
+          node: 'tools',
+          tool: 'search_knowledge_base',
+          status: 'unavailable',
+          attention: 'error',
+          msg: 'search unavailable',
+        }),
+      );
+      await fixture.whenStable();
+
+      const root = fixture.nativeElement as HTMLElement;
+      const items = [...root.querySelectorAll('.attention li')];
+      expect(items.length).toBe(2);
+      // newest first: the error event was sent last
+      expect(items[0].textContent).toContain('error');
+      expect(items[0].textContent).toContain('search unavailable');
+      expect(items[0].querySelector('[aria-hidden="true"]')?.textContent).toBe('✖');
+      expect(items[1].textContent).toContain('warn');
+      expect(items[1].textContent).toContain('retrying after a timeout');
+      expect(items[0].textContent).toMatch(/\d{1,2}:\d{2}:\d{2}/); // local time
+    });
+  });
+
+  describe('active node', () => {
+    it('lights no node for a final run even if the store still shows one running', async () => {
+      stubFetch({ detail: () => ({ id: 'r1', status: 'running', options: { limits: {} } }) });
+      const fixture = TestBed.createComponent(RunsPage);
+      const page = fixture.componentInstance;
+      await fixture.whenStable();
+      page.open('r1');
+      await fixture.whenStable();
+      const source = FakeEventSource.all.at(-1)!;
+      source.send(ev('stage', { node: 'tools' }));
+      source.send(ev('tool', { node: 'tools', tool: 'get_service_status', status: 'timeout' }));
+      await fixture.whenStable();
+      expect(page.store().activeNode()).not.toBeNull(); // still running, per the store alone
+
+      page.detail.set({ ...page.detail()!, status: 'completed' });
+      await fixture.whenStable();
+      expect(page.activeNode()).toBeNull();
+    });
+
+    it('lights no node for an interrupted run', async () => {
+      stubFetch({
+        detail: () => ({ id: 'r1', status: 'interrupted', options: { limits: {} } }),
+      });
+      const fixture = TestBed.createComponent(RunsPage);
+      const page = fixture.componentInstance;
+      await fixture.whenStable();
+      page.open('r1');
+      await fixture.whenStable();
+      const source = FakeEventSource.all.at(-1)!;
+      source.send(ev('stage', { node: 'tools' }));
+      source.send(ev('tool', { node: 'tools', tool: 'get_service_status', status: 'timeout' }));
+      await fixture.whenStable();
+      expect(page.store().activeNode()).not.toBeNull();
+      expect(page.activeNode()).toBeNull();
+    });
+
+    it('lights approval for a paused (awaiting_approval) run', async () => {
+      stubFetch({
+        detail: () => ({ id: 'r1', status: 'awaiting_approval', options: { limits: {} } }),
+      });
+      const fixture = TestBed.createComponent(RunsPage);
+      const page = fixture.componentInstance;
+      await fixture.whenStable();
+      page.open('r1');
+      await fixture.whenStable();
+      const source = FakeEventSource.all.at(-1)!;
+      source.send(
+        ev('approval', {
+          node: 'approval',
+          tool: 'create_incident',
+          status: 'pending',
+          data: { tool: 'create_incident', args: {} },
+        }),
+      );
+      await fixture.whenStable();
+      expect(page.activeNode()).toBe('approval');
+    });
+  });
 });

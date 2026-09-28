@@ -21,8 +21,8 @@
             >
               <span class="mono">{{ short(run.id) }}</span>
               <span>{{ run.status }}</span>
-              <span class="objective">{{ run.objective }}</span>
               <span class="muted">{{ time(run.created_at) }}</span>
+              <span class="objective">{{ run.objective }}</span>
             </button>
           </li>
         } @empty {
@@ -143,14 +143,87 @@
     }
   </section>
 
-  <div class="right stack"></div>
+  <div class="right stack">
+    <section class="panel" aria-labelledby="budget">
+      <h2 id="budget">Budget</h2>
+      @for (meter of budget(); track meter.label) {
+        <label class="meter">
+          <span>{{ meter.label }} {{ meter.text }}</span>
+          <meter min="0" [max]="meter.max" [value]="meter.used"></meter>
+        </label>
+      } @empty {
+        <p class="muted">Open a run to see its budget.</p>
+      }
+    </section>
+    <section class="panel" aria-labelledby="attention">
+      <h2 id="attention">Attention</h2>
+      <ul class="attention">
+        @for (event of store().attention(); track event.seq) {
+          @if (attentionStyle(event); as style) {
+            <li>
+              <button type="button" class="item" (click)="selected.set(event)">
+                <span [class]="style.colour">
+                  <span aria-hidden="true">{{ style.icon }}</span> {{ style.word }}
+                </span>
+                <span>{{ eventText(event) }}</span>
+                <span class="muted">{{ time(event.created_at) }}</span>
+              </button>
+            </li>
+          }
+        } @empty {
+          <li class="muted">Nothing needs attention.</li>
+        }
+      </ul>
+    </section>
+  </div>
 
-  <section class="bottom panel" aria-labelledby="detail">
-    <h2 id="detail">Detail</h2>
-    @if (selected(); as event) {
-      <pre>{{ event | json }}</pre>
-    } @else {
-      <p class="muted">Select a step to see its data.</p>
+  <div class="bottom stack">
+    @if (runId()) {
+      <section class="panel now" aria-live="polite" aria-labelledby="now">
+        <h2 id="now">Now</h2>
+        <p class="mono">{{ nowText() }}</p>
+      </section>
+      <section class="panel" aria-labelledby="flow">
+        <h2 id="flow">Flow</h2>
+        <app-flow-diagram [nodes]="store().nodes()" [active]="activeNode()" />
+      </section>
+      <section class="panel" aria-labelledby="console">
+        <h2 id="console">Console</h2>
+        <div class="row" role="group" aria-label="Filter">
+          @for (f of filters; track f) {
+            <button type="button" [attr.aria-pressed]="filter() === f" (click)="filter.set(f)">
+              {{ f }}
+            </button>
+          }
+        </div>
+        <ol class="console-lines mono">
+          @for (event of consoleEvents(); track event.seq) {
+            <li>
+              <button type="button" class="line" (click)="selected.set(event)">
+                <span class="muted">{{ offset(event) }}</span>
+                <span>{{ event.kind }}</span>
+                <span>{{ event.tool ?? event.node ?? '-' }}</span>
+                <span>{{ eventText(event) }}</span>
+                @if (attentionStyle(event); as style) {
+                  <span [class]="style.colour">
+                    <span aria-hidden="true">{{ style.icon }}</span> {{ style.word }}
+                  </span>
+                }
+              </button>
+            </li>
+          } @empty {
+            <li class="muted">No events for this filter.</li>
+          }
+        </ol>
+      </section>
     }
-  </section>
+    <section class="panel" aria-labelledby="detail">
+      <h2 id="detail">Detail</h2>
+      @if (selected(); as event) {
+        <pre>{{ event | json }}</pre>
+      } @else {
+        <p class="muted">Select a step to see its data.</p>
+      }
+    </section>
+  </div>
 </div>

@@ -1,17 +1,21 @@
 import { JsonPipe } from '@angular/common';
-import { Component, DestroyRef, inject, signal } from '@angular/core';
+import { Component, DestroyRef, computed, inject, signal } from '@angular/core';
 import { RunDetail, RunSummary, TraceEvent, api, followRun } from './api';
+import { FlowDiagram } from './flow-diagram';
 import { RunForm } from './run-form';
-import { TraceStore, attentionStyle, resultText } from './trace';
+import { TraceStore, attentionStyle, eventText, resultText } from './trace';
 
 export const REFRESH_MS = 5000; // runs list, open run summary and (T5) approvals
 export const EVAL_POLL_MS = 3000; // `/trace` reads after `done`, for the evaluation badges
 export const EVAL_POLL_READS = 40; // 2 min
 
-/** The Runs tab: new run form and runs list (left), timeline (center), detail panel (bottom). */
+/**
+ * The Runs tab: new run form and runs list (left), timeline (center), budget and attention (right),
+ * NOW bar, flow, console and detail panel (bottom).
+ */
 @Component({
   selector: 'app-runs-page',
-  imports: [RunForm, JsonPipe],
+  imports: [RunForm, FlowDiagram, JsonPipe],
   templateUrl: './runs-page.html',
 })
 export class RunsPage {
@@ -24,6 +28,52 @@ export class RunsPage {
   readonly runError = signal('');
   protected readonly attentionStyle = attentionStyle;
   protected readonly resultText = resultText;
+  protected readonly eventText = eventText;
+  protected readonly filters = ['All', 'Tools', 'Attention'] as const;
+  readonly filter = signal<'All' | 'Tools' | 'Attention'>('All');
+
+  /** False once nothing will run on its own: interrupted, or final before its `done` event arrives. */
+  readonly live = computed(() => {
+    const status = this.detail()?.status;
+    return !status || status === 'running' || status === 'awaiting_approval';
+  });
+
+  /** No lit node unless the run is live. A paused run lights `approval`. */
+  readonly activeNode = computed(() => (this.live() ? this.store().activeNode() : null));
+
+  readonly nowText = computed(() => {
+    const now = this.store().now();
+    if (!now.tool) return now.text;
+    if (!this.live()) return this.detail()!.status; // no call runs on an interrupted run
+    const attempt = now.attempt ? ` attempt ${now.attempt}` : ''; // a pending approval has no attempt yet
+    return `NOW ${now.tool}(${this.compact(now.args)})${attempt} · ${now.text}`;
+  });
+
+  /** Steps, tool calls and seconds used against the run's limits. */
+  readonly budget = computed(() => {
+    const limits = this.detail()?.options?.limits;
+    if (!limits) return [];
+    const used = this.store().used();
+    return [
+      { label: 'steps', used: used.steps, max: limits['max_steps'] },
+      { label: 'tool calls', used: used.toolCalls, max: limits['max_tool_calls'] },
+      {
+        label: 'seconds',
+        used: Math.round(used.seconds * 10) / 10,
+        max: limits['max_run_seconds'],
+      },
+    ]
+      .filter((meter) => typeof meter.max === 'number') // a limit the run detail does not name has no meter
+      .map((meter) => ({ ...meter, text: `${meter.used} / ${meter.max}` }));
+  });
+
+  readonly consoleEvents = computed(() => {
+    const events = this.store().events();
+    const filter = this.filter();
+    if (filter === 'Tools') return events.filter((event) => event.tool);
+    if (filter === 'Attention') return events.filter((event) => event.attention);
+    return events;
+  });
   private closeStream: (() => void) | null = null;
   private evalTimer: ReturnType<typeof setTimeout> | undefined;
   private refreshSeq = 0; // only the latest refresh writes: an older answer must not overwrite a newer one
@@ -104,6 +154,12 @@ export class RunsPage {
       if (this.store() === store) this.evalTimer = setTimeout(() => void read(), EVAL_POLL_MS);
     };
     await read();
+  }
+
+  /** Seconds since the run's first event, on server time. */
+  protected offset(event: TraceEvent): string {
+    const first = this.store().events()[0];
+    return first ? ((event.t_ms - first.t_ms) / 1000).toFixed(2) : '0.00';
   }
 
   protected short(id: string): string {

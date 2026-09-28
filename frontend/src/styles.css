@@ -261,9 +261,19 @@ details[open] {
 }
 
 .run-row {
-  grid-template-columns: auto auto minmax(0, 1fr) auto;
-  gap: 8px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 2px 8px;
   align-items: baseline;
+}
+
+.run-row > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.run-row .objective {
+  grid-column: 1 / -1;
 }
 
 .run-row[aria-current='true'] {
@@ -284,6 +294,7 @@ details[open] {
 
 .item.call {
   margin-left: 16px;
+  width: calc(100% - 16px);
 }
 
 .final {
@@ -297,4 +308,97 @@ details[open] {
   padding: 0 6px;
   margin-right: 4px;
   font-size: 12px;
+}
+
+/* Budget, attention, NOW bar, flow, console */
+.meter {
+  display: grid;
+  gap: 2px;
+}
+
+meter {
+  width: 100%;
+}
+
+.attention,
+.console-lines {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.now p {
+  margin: 0;
+  font-size: 13px;
+}
+
+.flow {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.flow .edge {
+  stroke: var(--border);
+  stroke-width: 1.5;
+}
+
+.flow .node rect {
+  fill: var(--panel);
+  stroke: var(--border);
+  stroke-width: 1.5;
+}
+
+.flow .node.active rect {
+  stroke: var(--accent);
+  stroke-width: 3;
+}
+
+.flow text {
+  fill: currentColor;
+  font-size: 12px;
+}
+
+.flow .node.active text:first-of-type {
+  font-weight: 700;
+}
+
+.flow text.state {
+  font-size: 11px;
+}
+
+.console-lines {
+  max-height: 320px;
+  overflow: auto;
+}
+
+.line {
+  width: 100%;
+  text-align: left;
+  display: grid;
+  grid-template-columns: 4.5em 5.5em 15em minmax(0, 1fr) auto;
+  gap: 8px;
+  border: none;
+  border-radius: 0;
+  padding: 2px 4px;
+  background: transparent;
+}
+
+.line > span:nth-child(-n + 3) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.line:hover,
+.line:focus-visible {
+  background: var(--bg);
+}
+
+button[aria-pressed='true'] {
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
 }
