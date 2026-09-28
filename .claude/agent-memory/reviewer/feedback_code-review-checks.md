@@ -54,6 +54,13 @@ Found in the M3 T1 review (2026-09-28), carry into T3/T4/T5:
 - WAL stale snapshot on the shared store connection: a read written as `async with db.execute(...) as cur: await cur.fetchall()` is 2-3 queued aiosqlite jobs. If the checkpointer's connection commits between them, any store write queued in that window (autocommit or `BEGIN IMMEDIATE`) fails at once with `database is locked` (SQLITE_BUSY_SNAPSHOT skips busy_timeout). Stress probe: two coroutines looping `get_run`/`list_events`, one looping writes on a second aiosqlite connection, one looping `insert_event`: 1-6 of 300 writes failed. With reads as one job (`execute_fetchall`) 0 of 300. Re-run this probe whenever a read path or connection changes (API, SSE replay, health).
 - `Store.close()` during a shielded transaction: the connection closes mid-transaction (SQLite rolls back; state stays consistent, the shield's promise does not). Fix: `close()` takes `_write` first.
 
+Found in the M3 T2 review (2026-09-28), carry into T3/T5:
+
+- A second `done` needs a final run row set back to `running`; only `decide_approval` (from awaiting) and `resume_run` (from interrupted) set `running`, and no app code calls `update_run(status=...)`. Re-grep these when T3-T6 add writers.
+- Row write and its event are two steps: crash between `pause_run` and the `pending` event, or between `finish_run` and `done`, leaves a run with no such event. T5 SSE ends only on `done`: check a final run without `done` does not hang its stream.
+- `_internal_error` emits its `error` event before the conditional `finish_run`: when a cancel won, that event lands after the cancel's `done`.
+- Multi-interrupt crash probe that paid off (passed): two approvals, decide c0, patch `pause_run` to raise, reopen `Runner.open` on the same file, `continue_run` re-pauses at c1, decide, reopen again, resume: both incidents, c0's edited args kept (LangGraph keeps earlier resume values in the checkpoint by index). Put probe tests in `backend/tests/` temporarily (fixtures), delete after.
+
 **Why:** the tester runs the listed tests; these gaps pass them.
 **How to apply:** on every review touching logging, SQL or the tracer, run the probes above in the scratchpad. See also [[spec-adr-config-drift-hotspots]].
 

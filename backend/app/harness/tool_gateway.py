@@ -178,4 +178,7 @@ def _attention(name: str, envelope: dict) -> str | None:
             return "success"
         data = envelope["data"]
         return "info" if isinstance(data, dict) and data.get("mode") == "sparse_only" else None
-    return "warn" if envelope["error"]["type"] in ("validation", "bad_output") else "error"
+    error_type = envelope["error"]["type"]
+    if error_type == "rejected":
+        return "info"  # the operator's choice, not a failure
+    return "warn" if error_type in ("validation", "bad_output") else "error"

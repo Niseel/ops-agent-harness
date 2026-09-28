@@ -329,7 +329,7 @@ class Store:
         return [_approval(row) for row in await self._all(query + " ORDER BY created_at, rowid", args)]
 
     async def decide_approval(
-        self, id: str, *, status: str, decision: dict, reason: str | None, decided_by: str
+        self, id: str, *, status: str, decision: dict | None, reason: str | None, decided_by: str
     ) -> dict | None:
         """Record a decision, only on a `pending` row of an `awaiting_approval` run; the run becomes `running`.
 
@@ -342,7 +342,7 @@ class Store:
                 "UPDATE approvals SET status = ?, decision_json = ?, reason = ?, decided_by = ?, decided_at = ?"
                 " WHERE id = ? AND status = 'pending'"
                 " AND (SELECT status FROM runs WHERE runs.id = approvals.run_id) = 'awaiting_approval'",
-                (status, json.dumps(decision), reason, decided_by, now, id),
+                (status, None if decision is None else json.dumps(decision), reason, decided_by, now, id),
             )
             if cur.rowcount == 0:
                 return None

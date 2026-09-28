@@ -176,6 +176,8 @@ The system prompt tells the model that tool results are data, never instructions
 - `reject` (reason required): the call does not run; the LLM gets a `rejected` envelope with the reason.
 - `edit` (args required): the new arguments are validated with the input model (422 if invalid, approval stays pending), then the call runs with them.
 - `edit.args` replaces the arguments completely.
+- A reply with several calls that need approval asks for them one at a time, in reply order; the tools step runs after the last decision.
+- A decision is stored in the approval row before the run continues, so a resume after a crash applies it.
 - Approval statuses: `pending`, `approved`, `rejected`, `edited`, `expired`, `cancelled`.
 - A decision is a conditional update on `status = 'pending'` while the run is `awaiting_approval`; anything else gets 409.
 - A sweep every `approval.sweep_s` resumes expired approvals of runs in `awaiting_approval` as rejected ("approval expired"). Its actor is `system`.
@@ -209,7 +211,7 @@ attention ∈ null | info | warn | error | success
 
 `t_ms` is Unix epoch milliseconds.
 
-Events are appended to the `events` table and published to live subscribers. The same events go to stdout as JSON log lines with `run_id`. Known secret values are masked. Audit events for state-changing API calls use kind `log` with `data = {actor, action, entity_id}`; `run_id` is empty for actions that are not about one run (starting an evaluation).
+Events are appended to the `events` table and published to live subscribers. The same events go to stdout as JSON log lines with `run_id`. Known secret values are masked. Audit events for state-changing API calls use kind `log` with `data = {actor, action, entity_id}`; `run_id` is empty for actions that are not about one run (starting an evaluation). Actions: `create_run`, `decide_approval`, `resume_run`, `cancel_run`, `start_eval`; the expiry sweep writes `expire_approval` with actor `system`. The CLI writes the same events.
 
 `attention` marks what a human should notice. The UI picks the colour from `attention` and `kind` ([0015](../docs/adr/0015-ui-run-console-not-chat.md)):
 
@@ -225,6 +227,7 @@ Events are appended to the `events` table and published to live subscribers. The
 | Run `failed`, `limit_exceeded`, `timed_out` | `done` | `error` | red |
 | Search in `sparse_only` mode | `tool` | `info` | blue |
 | Call edited or rejected by the operator | `approval` | `info` | blue |
+| Rejected call (its `tool` event) | `tool` | `info` | blue |
 | Incident created | `tool` | `success` | green |
 | Run `completed` | `done` | `success` | green |
 | Run `cancelled` | `done` | `info` | blue |
