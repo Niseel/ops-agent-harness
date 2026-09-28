@@ -1,6 +1,6 @@
 # 0013. Recovery: interrupted runs resume by hand
 
-Status: Accepted · Date: 2026-09-26
+Status: Accepted · Date: 2026-09-26 · Refined in M3: a decision stored before a crash is applied on resume ([spec, Approval](../../specs/ops-agent-harness.md#approval))
 
 ## Context
 

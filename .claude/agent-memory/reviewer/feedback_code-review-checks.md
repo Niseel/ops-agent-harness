@@ -49,6 +49,26 @@ Found in the M2 T4 review (2026-09-27), carry into M3/M4:
 - Spec attention table names only "Judge unreachable" for `eval`+`info`, but every null (error, NaN, no contexts) gives `info`. M4 maps from that table.
 - `evaluate_run` probes the judge (up to 2 s) even when there is nothing to score (empty state, no search, no final).
 
+Found in the M3 T1 review (2026-09-28), carry into T3/T4/T5:
+
+- WAL stale snapshot on the shared store connection: a read written as `async with db.execute(...) as cur: await cur.fetchall()` is 2-3 queued aiosqlite jobs. If the checkpointer's connection commits between them, any store write queued in that window (autocommit or `BEGIN IMMEDIATE`) fails at once with `database is locked` (SQLITE_BUSY_SNAPSHOT skips busy_timeout). Stress probe: two coroutines looping `get_run`/`list_events`, one looping writes on a second aiosqlite connection, one looping `insert_event`: 1-6 of 300 writes failed. With reads as one job (`execute_fetchall`) 0 of 300. Re-run this probe whenever a read path or connection changes (API, SSE replay, health).
+- `Store.close()` during a shielded transaction: the connection closes mid-transaction (SQLite rolls back; state stays consistent, the shield's promise does not). Fix: `close()` takes `_write` first.
+
+Found in the M3 T2 review (2026-09-28), carry into T3/T5:
+
+- A second `done` needs a final run row set back to `running`; only `decide_approval` (from awaiting) and `resume_run` (from interrupted) set `running`, and no app code calls `update_run(status=...)`. Re-grep these when T3-T6 add writers.
+- Row write and its event are two steps: crash between `pause_run` and the `pending` event, or between `finish_run` and `done`, leaves a run with no such event. T5 SSE ends only on `done`: check a final run without `done` does not hang its stream.
+- `_internal_error` emits its `error` event before the conditional `finish_run`: when a cancel won, that event lands after the cancel's `done`.
+- Multi-interrupt crash probe that paid off (passed): two approvals, decide c0, patch `pause_run` to raise, reopen `Runner.open` on the same file, `continue_run` re-pauses at c1, decide, reopen again, resume: both incidents, c0's edited args kept (LangGraph keeps earlier resume values in the checkpoint by index). Put probe tests in `backend/tests/` temporarily (fixtures), delete after.
+
+Found in the M3 T3 review (2026-09-28), carry into T4/T5/T6:
+
+- Proven (probe passed): cancelling a spawned segment mid-tool cancels the tool too (LangGraph leaves no orphan task); no event lands after cancel's `done`. Probe script: Runner.open on a temp file, hanging tool via `registry.TOOLS[...] = replace(tool, run=hang)`, spawn, cancel, release, sleep, list events. Re-run it if the loop or gateway gains new tasks.
+- No-event-after-done rests on: every spawned entry (`run_segment`, `continue_run`) reads the row first, and cancel snapshots `_tasks` right after `cancel_run` commits. Any new spawned fn that emits before reading the row breaks it.
+- Per-run lock waits are unbounded: the sweep (stale `expired_approvals` list) or a racing `decide` can wait behind a whole segment (max_run_seconds plus online evaluation). Rare; flagged MINOR.
+- `tracer.emit` inserts, then publishes: a segment cancelled between the two leaves a stored event that live subscribers never get (SSE gap). Matters for T5 only.
+- T4: `start` after a racing cancel makes `run_segment` raise ValueError, logged as "background segment failed".
+
 **Why:** the tester runs the listed tests; these gaps pass them.
 **How to apply:** on every review touching logging, SQL or the tracer, run the probes above in the scratchpad. See also [[spec-adr-config-drift-hotspots]].
 
@@ -69,3 +89,22 @@ Found in the M2 T3 review (2026-09-27), carry into T4/M3:
 - `RagasJudge.metrics()` imports ragas synchronously on the first metric call (~1.5 s warm, more cold). In M3 that stalls the API event loop (SSE, other requests) once per process. Check M3 warms it off the loop (`asyncio.to_thread`) or accepts it in writing.
 - Golden search uses `limit=10` sections, but the KB has only 8 docs, so "MRR@10 over the first 10 distinct doc_ids" (spec wording) really means "doc_ids in the first 10 hits". Re-check if the KB or limit changes.
 - Probes that paid off: build the metrics with `socket.connect`/`getaddrinfo` blocked (no network, `do_not_track()` True); `uv lock --check` after an override; grep instructor for `jiter` to verify override claims.
+
+Found in the M3 T4 review (2026-09-28), carry into T5/M4:
+
+- `FastAPI(default_response_class=...)` covers route returns only. FastAPI's `RequestValidationError` handler and Starlette's `HTTPException` handler build a plain `JSONResponse`, so a masking response class misses them: the 422 list echoes `input` (an extra field's value, a too-long reason, the whole body for a model_validator error), and `HTTPException(422, describe(exc))` echoes unknown option keys. Probe: set `settings.llm_api_key`, POST a body with the secret as an extra field's value and as an `options` key; grep the body. Fix: register both handlers with the masked class.
+- Starlette's `ServerErrorMiddleware` re-raises after an `Exception` handler answers 500; uvicorn's own `uvicorn.error` handler (not the masked root) then prints the traceback with the exception text. Probe: real `uvicorn.Server` in a script with a route that raises `RuntimeError(secret)`; grep stderr. Fix lives in `log.setup` (route uvicorn loggers through the masked handler).
+- Real-uvicorn smoke script pattern that works: `uvicorn.Server(Config(app, port=...))` as a task, poll `server.started`, httpx2 client, `server.should_exit = True`; patch `qdrant.get_kb` to raise so startup skips ingest. macOS has no `timeout` command.
+- Logging probes must start uvicorn from its CLI (`uv run uvicorn probe_app:app` with a wrapper module in the scratchpad that imports app.main and adds a raising route), in the background: uvicorn configures its loggers before it imports the app, so an in-process `uvicorn.Server` built after importing app.main re-installs the unmasked handlers and gives a false leak. In zsh, `rm -f $DB*` with no match aborts an `&&` chain; list the files explicitly.
+
+Found in the M3 T5 review (2026-09-28), carry into M4 (UI stream) and any SSE change:
+
+- (Fixed in T5 with GRACE_S = 5 s and a regression test; re-check if cancel gains slower steps before `done`, e.g. the unbounded per-run lock wait.) SSE "row final, no `done`" end rule races the writers: `cancel` commits the `cancelled` row, then awaits segment teardown, the per-run lock, `get_state`, `update_run`, the audit event, and only then `done`. A stream opened (or an idle timeout firing) in that window read once more at once and ended with neither the audit event nor `done`. Probe (scratchpad copy of conftest.py + test_api.py, run with `PYTHONPATH=. uv run pytest --rootdir=. -c pyproject.toml <scratch>/test_probe.py` from backend/): patch `runner.get_state` to sleep 0.3, cancel a paused run as a task, `wait_for_status(..., "cancelled")`, then GET /events. Fix shape: a grace deadline of several seconds, reading on every wake until `done` or the deadline (one wake can be the audit event, not `done`).
+- Typed int headers/params with only `ge=0` reach SQLite: `Last-Event-ID: 18446744073709551616` raises OverflowError inside the stream (200 sent, stream aborted, ERROR traceback). Check every int that becomes a SQL parameter has `le=2**63-1`.
+- Streams bypass MaskedJSONResponse: SSE data is masked only where the code calls `tracer.mask` (dict values, not keys).
+
+Found in the M3 T6 review (2026-09-28), carry into any CLI or interactive change:
+
+- `await asyncio.to_thread(input, ...)` makes Ctrl+C at a prompt hang: asyncio.run cancels the main task, then waits for the executor thread (and the interpreter's atexit join) until stdin yields a line or EOF. A second Ctrl+C hangs too. Probe: `subprocess.Popen([.venv/bin/python, -m, app.cli, run, ...], stdin=PIPE, preexec_fn=lambda: signal.signal(SIGINT, SIG_DFL))`, SIGINT after 6 s, wait 10 s. A shell `&` job ignores SIGINT, and `kill -INT` on `uv run` does not reach the child: both give false results. Fix: a daemon thread that sets a loop future via call_soon_threadsafe.
+- Unpacking `[x] = await list(...)` of a row another process can change (API sweep, cancel, decide) raises a bare ValueError traceback. Probe: wrap `Runner.run_segment` so a second `Runner.open` cancels the run right after the segment returns.
+- CLI prints are outside the masked response class and the tracer: approval args, `list` objectives, the final answer and exception text print secrets unmasked. Probe with `settings.llm_api_key` set and the secret in the objective; grep stdout.

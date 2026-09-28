@@ -20,7 +20,7 @@ docker compose up -d qdrant                            # knowledge base store
 In a second terminal, start the API on :8000 and leave it running:
 
 ```bash
-cd backend && uv run uvicorn app.main:app --port 8000
+cd backend && uv run uvicorn app.main:app --port 8000 --timeout-graceful-shutdown 5
 ```
 
 Then pick one:

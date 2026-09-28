@@ -1030,7 +1030,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "aiosqlite", specifier = ">=0.22.1" },
-    { name = "fastapi" },
+    { name = "fastapi", specifier = ">=0.135.0" },
     { name = "instructor", specifier = ">=1.17.0,<2" },
     { name = "langchain-community", specifier = ">=0.4.1,<0.4.2" },
     { name = "langgraph", specifier = ">=1.2.12,<2" },

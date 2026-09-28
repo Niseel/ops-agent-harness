@@ -31,7 +31,7 @@ class LLMReply:
 
 def to_reply(completion: ChatCompletion) -> LLMReply:
     usage = completion.usage
-    tokens = (usage.prompt_tokens, usage.completion_tokens) if usage else (0, 0)
+    tokens = (usage.prompt_tokens or 0, usage.completion_tokens or 0) if usage else (0, 0)  # null counts happen
     if not completion.choices:
         return LLMReply(None, (), None, *tokens)
     choice = completion.choices[0]
@@ -63,6 +63,14 @@ class OpenAICompatClient:
             model=self.model, messages=messages, temperature=cfg.llm.temperature, **extra
         )
         return to_reply(completion)
+
+    async def reachable(self) -> bool:
+        """True when the endpoint answers GET /models within 2 s (health)."""
+        try:
+            await self._sdk.with_options(timeout=2.0, max_retries=0).models.list()
+            return True
+        except Exception:
+            return False
 
 
 class OpenAICompatEmbedder:

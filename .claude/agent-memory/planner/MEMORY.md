@@ -1,3 +1,3 @@
-- [Plan checks](feedback_plan-checks.md) — M1/M2 gaps (task-order tests, tests changed on purpose, lock-aware deps, telemetry); defaults-first questions work
-- [Library notes pointer](reference_library-notes.md) — library facts live in the M1 and M2 plans (LangGraph, openai, qdrant-client, ragas pin)
+- [Plan checks](feedback_plan-checks.md) — M1–M3 gaps (task-order tests, tests changed on purpose, shared-connection transactions, SSE tests); defaults-first questions work
+- [Library notes pointer](reference_library-notes.md) — library facts live in the M1–M3 plans (LangGraph, openai, qdrant-client, ragas pin, FastAPI SSE, httpx2, uvicorn)
 - [Private name never in repo](project_private-name.md) — earlier private project's name must not appear in any repo file or this memory dir

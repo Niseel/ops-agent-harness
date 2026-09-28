@@ -299,6 +299,14 @@ async def test_ingest_skips_unchanged(kb, monkeypatch):
     assert kb.embedder.calls == calls and changes == []
 
 
+async def test_ingest_force_rebuilds(kb):
+    assert (await ingest(kb, DOCS))["status"] == "skipped"
+    before = (await kb.client.get_collection(cfg.kb.collection)).points_count
+    result = await ingest(kb, DOCS, force=True)  # e.g. after a BM25 setting changed, which the hash does not cover
+    assert result == {"status": "rebuilt", "mode": "hybrid", "chunks": before}
+    assert (await kb.search("payments-api latency", mode="hybrid")).hits
+
+
 async def test_ingest_rebuilds_when_docs_or_model_change(kb, monkeypatch, tmp_path):
     docs = tmp_path / "kb"
     shutil.copytree(DOCS, docs)

@@ -61,14 +61,15 @@ def content_hash(docs_dir: Path, embed_model: str) -> str:
     return digest.hexdigest()
 
 
-async def ingest(kb, docs_dir: Path) -> dict:
-    """Index `docs_dir` into the collection unless it is current. Qdrant errors propagate."""
+async def ingest(kb, docs_dir: Path, *, force: bool = False) -> dict:
+    """Index `docs_dir` into the collection unless it is current (`force` rebuilds anyway: the hash does not
+    cover the BM25 settings or the tokenizer). Qdrant errors propagate."""
     chunks = load_chunks(docs_dir)
     if not chunks:
         raise ValueError(f"no knowledge-base documents in {docs_dir}")
     name, client, digest = cfg.kb.collection, kb.client, content_hash(docs_dir, kb.embedder.model)
 
-    if await client.collection_exists(name):
+    if not force and await client.collection_exists(name):
         first, _ = await client.scroll(name, limit=1, with_payload=True)
         payload = first[0].payload if first else {}
         # A BM25-only index (embed_model null) is never skipped, so dense vectors arrive once embeddings answer.

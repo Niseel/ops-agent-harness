@@ -37,15 +37,20 @@ class TextFormatter(logging.Formatter):
         return now_iso(record.created)  # the project format, not local time
 
 
+def secret_forms(secrets: list[str]) -> list[str]:
+    """Each secret as typed and JSON-escaped (JSON escapes quotes, backslashes and control characters),
+    longest first, so a secret that contains another is masked whole. Shared by logs and API responses."""
+    forms = {form for s in secrets if s for form in (s, json.dumps(s, ensure_ascii=False)[1:-1])}
+    return sorted(forms, key=len, reverse=True)
+
+
 class _Masked(logging.Formatter):
     """Wraps another formatter and masks secrets in its finished output."""
 
     def __init__(self, inner: logging.Formatter, secrets: list[str]) -> None:
         super().__init__()
         self.inner = inner
-        # JSON escapes quotes, backslashes and control characters, so look for the escaped form too.
-        forms = {form for s in secrets if s for form in (s, json.dumps(s, ensure_ascii=False)[1:-1])}
-        self.secrets = sorted(forms, key=len, reverse=True)
+        self.secrets = secret_forms(secrets)
 
     def format(self, record: logging.LogRecord) -> str:
         line = self.inner.format(record)
@@ -59,3 +64,11 @@ def setup(level: str, fmt: str, secrets: list[str]) -> None:
     handler = logging.StreamHandler(sys.stdout)
     handler.setFormatter(_Masked(inner, secrets))
     logging.basicConfig(level=level, handlers=[handler], force=True)
+    # uvicorn installs its own unmasked handlers before it imports the app; send its lines (tracebacks and
+    # access paths included) through the masked root instead.
+    for name in ("uvicorn", "uvicorn.error", "uvicorn.access"):
+        server_log = logging.getLogger(name)
+        server_log.handlers.clear()
+        server_log.propagate = True
+    # The OpenAI SDK's client logs one INFO line per request; health probes and runs would flood the log.
+    logging.getLogger("httpx").setLevel(logging.WARNING)

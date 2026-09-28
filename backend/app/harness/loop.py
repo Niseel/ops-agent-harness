@@ -18,7 +18,7 @@ from langgraph.types import interrupt
 from app.config import Limits
 from app.harness import llm_gateway, tool_gateway
 from app.harness.policy import check_calls
-from app.harness.state import AgentState, RunStatus
+from app.harness.state import AgentState, RunStatus, err
 from app.harness.store import Store
 from app.harness.tracer import Tracer
 from app.tools.faults import EmbedCounter, Faults
@@ -140,14 +140,19 @@ async def tools(state: AgentState, runtime: Runtime[RunContext]) -> dict:
     messages = []
     for call in state["pending"]:
         name = call["name"]
+        decision = state["decisions"].get(call["id"]) or {}
         if call["refusal"] is not None:
             envelope = call["refusal"]
+            await tool_gateway.refused(call, envelope, run_id=ctx.run_id, tracer=ctx.tracer)
+        elif decision.get("decision") == "reject":
+            # A person said no: the call never runs and the LLM gets the reason.
+            envelope = err("rejected", f"{name} was rejected: {decision.get('reason')}")
             await tool_gateway.refused(call, envelope, run_id=ctx.run_id, tracer=ctx.tracer)
         else:
             envelope, made = await tool_gateway.execute(
                 call,
                 run_id=ctx.run_id,
-                decision=state["decisions"].get(call["id"]),
+                decision=decision or None,
                 attempts_before=attempts.get(name, 0),
                 fault=ctx.faults.for_tool(name),
                 store=ctx.store,

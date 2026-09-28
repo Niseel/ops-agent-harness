@@ -142,6 +142,15 @@ def _reason(exc: Exception) -> str:
     return f"{type(exc).__name__}: {exc}"[:200]
 
 
+async def available_kb() -> KnowledgeBase | None:
+    """The knowledge base when its collection answers, else None (the API's 503, the CLI's exit 1)."""
+    try:
+        kb = get_kb()
+        return kb if await kb.status() != "unavailable" else None
+    except Exception:
+        return None
+
+
 @cache
 def get_kb() -> KnowledgeBase:
     """One knowledge base per process, from settings. Tests replace it with the `kb` fixture."""

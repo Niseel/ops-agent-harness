@@ -327,3 +327,14 @@ async def test_recursion_limit_ends_limit_exceeded(runner, monkeypatch):
     assert (status, row["error"]) == ("limit_exceeded", "recursion_limit")
     done = [e for e in await runner.store.list_events(row["id"]) if e["kind"] == "done"]
     assert len(done) == 1
+
+
+async def test_approval_wait_not_counted(runner):
+    incident = {"title": "payments-api is degraded", "description": "p95 2400 ms, error rate 12%.", "severity": "SEV2"}
+    llm = fake.ScriptedLLM([fake.calls(("create_incident", incident, "c0")), fake.final("done")])
+    run = await runner.create_run("Open an incident", options={"limits": {"max_run_seconds": 1}})
+    assert await runner.run_segment(run["id"], llm_client=llm) == "awaiting_approval"
+    await asyncio.sleep(1.1)  # longer than the run's time limit, while a person decides
+    [approval] = await runner.store.list_approvals(run_id=run["id"])
+    await runner.decide(run["id"], approval["id"], decision="approve", actor="anonymous")
+    assert await runner.continue_run(run["id"], llm_client=llm) == "completed"

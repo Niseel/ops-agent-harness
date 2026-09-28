@@ -1101,7 +1101,12 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('200 OK', function () { pm.response.to.have.status(200); });"
+                  "pm.test('200 OK', function () { pm.response.to.have.status(200); });",
+                  "pm.test('every dependency reported', function () {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body).to.have.all.keys('status', 'llm_default', 'db', 'llm', 'embeddings', 'qdrant', 'judge', 'kb');",
+                  "  pm.expect(['hybrid', 'sparse_only', 'unavailable']).to.include(body.kb.mode);",
+                  "});"
                 ]
               }
             }

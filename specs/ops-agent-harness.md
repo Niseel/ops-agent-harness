@@ -80,7 +80,7 @@ Run statuses ([0004](../docs/adr/0004-state-and-database-sqlite.md)):
 running ──► awaiting_approval ──decision──► running
 running ──► completed | failed | limit_exceeded | timed_out | cancelled      (final)
 running ──(process restart)──► interrupted ──resume──► running
-awaiting_approval | interrupted ──cancel──► cancelled
+running | awaiting_approval | interrupted ──cancel──► cancelled
 ```
 
 A run that ends `failed`, `limit_exceeded` or `timed_out` stores an `error` code: `llm_unavailable`, `malformed_reply`, `max_steps`, `max_tool_calls`, `recursion_limit`, `max_run_seconds` or `internal_error` ([docs/DESIGN.md](../docs/DESIGN.md#3-database-design)).
@@ -88,7 +88,7 @@ A run that ends `failed`, `limit_exceeded` or `timed_out` stores an `error` code
 A run executes in **segments**: from start (or resume, or a decision) until it finishes or pauses. Each segment runs as a background task with a per-run lock, so two decisions or resumes never run the same run at once.
 
 - Only the API process runs startup recovery (`running` → `interrupted`). The CLI never does, because it may share the database with a running API.
-- Cancel sets the run to `cancelled` and, in the same transaction, sets its `pending` approvals to `cancelled`. Resume and decisions on a run in a final status return 409.
+- Cancel sets the run to `cancelled` and, in the same transaction, sets its `pending` approvals to `cancelled`. A running segment is stopped first; the run then gets its one `done` event. Resume and decisions on a run in a final status return 409.
 
 ### Agent loop
 
@@ -176,6 +176,8 @@ The system prompt tells the model that tool results are data, never instructions
 - `reject` (reason required): the call does not run; the LLM gets a `rejected` envelope with the reason.
 - `edit` (args required): the new arguments are validated with the input model (422 if invalid, approval stays pending), then the call runs with them.
 - `edit.args` replaces the arguments completely.
+- A reply with several calls that need approval asks for them one at a time, in reply order; the tools step runs after the last decision.
+- A decision is stored in the approval row before the run continues, so a resume after a crash applies it.
 - Approval statuses: `pending`, `approved`, `rejected`, `edited`, `expired`, `cancelled`.
 - A decision is a conditional update on `status = 'pending'` while the run is `awaiting_approval`; anything else gets 409.
 - A sweep every `approval.sweep_s` resumes expired approvals of runs in `awaiting_approval` as rejected ("approval expired"). Its actor is `system`.
@@ -209,7 +211,7 @@ attention ∈ null | info | warn | error | success
 
 `t_ms` is Unix epoch milliseconds.
 
-Events are appended to the `events` table and published to live subscribers. The same events go to stdout as JSON log lines with `run_id`. Known secret values are masked. Audit events for state-changing API calls use kind `log` with `data = {actor, action, entity_id}`; `run_id` is empty for actions that are not about one run (starting an evaluation).
+Events are appended to the `events` table and published to live subscribers. The same events go to stdout as JSON log lines with `run_id`. Known secret values are masked. Audit events for state-changing API calls use kind `log` with `data = {actor, action, entity_id}`; `run_id` is empty for actions that are not about one run (starting an evaluation). Actions: `create_run`, `decide_approval`, `resume_run`, `cancel_run`, `start_eval`; the expiry sweep writes `expire_approval` with actor `system`. The CLI writes the same events.
 
 `attention` marks what a human should notice. The UI picks the colour from `attention` and `kind` ([0015](../docs/adr/0015-ui-run-console-not-chat.md)):
 
@@ -225,6 +227,7 @@ Events are appended to the `events` table and published to live subscribers. The
 | Run `failed`, `limit_exceeded`, `timed_out` | `done` | `error` | red |
 | Search in `sparse_only` mode | `tool` | `info` | blue |
 | Call edited or rejected by the operator | `approval` | `info` | blue |
+| Rejected call (its `tool` event) | `tool` | `info` | blue |
 | Incident created | `tool` | `success` | green |
 | Run `completed` | `done` | `success` | green |
 | Run `cancelled` | `done` | `info` | blue |
@@ -276,6 +279,13 @@ All routes are under `/api`, return JSON, and follow [the API standard](../.clau
 | GET | `/api/incidents` | | 200 list of `{id, run_id, title, description, severity, status, created_at}` | |
 | GET | `/api/health` | | 200 DB, LLM, embeddings, Qdrant, judge, knowledge base mode (`hybrid`, `sparse_only`, `unavailable`) | |
 
+- Decisions: `reason` (1–500 characters) is required for `reject`; `args` (an object) is required for `edit` and refused with the other decisions. With `APPROVER_TOKEN` set, the token check comes first.
+- `resume` answers 202 and `cancel` 200, both with `{run_id, status}`. `GET /api/approvals` lists the oldest first.
+- An unexpected error answers 500 `{"detail": "internal error"}`. Configured secret values are masked in every response.
+- `/events`: each message has `id: <seq>` and `data: <event JSON>`, with no event name. The stream ends after the `done` event, or at once when `Last-Event-ID` is at or past it, or when the run row has been final for 5 s and no `done` came. Keep-alive is a `: ping` comment. Nothing is sent after `done`: online evaluation events are in `/trace` and the run detail.
+- `POST /api/eval/kb` sends `event: progress` with `{done, total}`, then `event: report` with the report (`event: error` if it fails). Duplicate modes are dropped. A client that disconnects stops the evaluation, and no report is stored.
+- `/api/health` answers `{status, llm_default, db: {ok}, llm: {model, reachable}, embeddings: {model, reachable}, qdrant: {reachable}, judge: {model, reachable}, kb: {mode}}`; `status` is `degraded` only when the database does not answer; the probes run together and each waits at most 2 s.
+
 Every state-changing call (create run, decide, resume, cancel, start evaluation) emits an event with actor (`current_user()`), action, entity id and time.
 
 ### CLI
@@ -283,7 +293,8 @@ Every state-changing call (create run, decide, resume, cancel, start evaluation)
 `uv run python -m app.cli <command>`, same database as the API:
 
 - `run "<objective>" [--llm fake|openai] [--faults JSON] [--max-steps N] [--no-eval]`: prints events live; on an approval it asks `[a]pprove / [r]eject / [e]dit`. `--faults` follows the same rules as the API, including `ALLOW_FAULT_INJECTION`.
-- `list`, `show <run_id>`, `resume <run_id>`, `ingest`, `eval`.
+- `list [--limit N]`, `show <run_id>`, `resume <run_id>`, `ingest [--force]` (rebuild even when unchanged), `eval [--modes hybrid,dense,sparse]`.
+- Exit code 0 when the command worked (for `run` and `resume`: the run completed), 1 otherwise, 2 for bad arguments or input. At an approval prompt, end of input leaves the approval pending.
 
 ### UI
 
