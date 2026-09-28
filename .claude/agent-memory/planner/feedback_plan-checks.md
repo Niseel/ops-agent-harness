@@ -1,6 +1,6 @@
 ---
 name: plan-checks
-description: Checks that found real gaps when the planner reviewed milestone plans (M1 and M2 phase 1, 2026-09-27); run them on every plans/mN-*.md review
+description: Checks that found real gaps when the planner reviewed milestone plans (M1, M2 and M3 phase 1, 2026-09-27); run them on every plans/mN-*.md review
 metadata:
   type: feedback
 ---
@@ -23,6 +23,16 @@ Added in M2 phase 1 (2026-09-27):
 - Resolve new dependencies against the current uv.lock, not in isolation (a `<0.4` pin could not coexist with the langchain-core that langgraph needs), and read the package's open GitHub issues for import-time breaks.
 - Check new libraries for phone-home defaults (ragas usage analytics) and pin them off in the plan and DESIGN's safety table.
 - Fixture text read by a rule-based fake must be designed against the fake's regexes and every demo/test objective; pin a ranking test over the list of objectives.
+
+Added in M3 phase 1 (2026-09-27):
+- "One transaction" in a plan is not atomic if the store shares one aiosqlite connection across coroutines: other coroutines' statements join it. Pin an in-process write lock for every write plus `asyncio.shield` around multi-statement writes (a cancelled await still runs the queued statement, so BEGIN can be left open).
+- Make every final-status write conditional (`WHERE status = 'running'`) and emit `done` only when it won: that, not task bookkeeping, is what guarantees one `done` under cancel races.
+- Between a DB decision and a graph resume there is a crash window: store the decision first and rebuild the resume value from the row.
+- Streaming endpoints: check the test transport (httpx2 `ASGITransport` and Starlette `TestClient` collect the whole body) and the server's shutdown (uvicorn waits for open streams unless `--timeout-graceful-shutdown`).
+- Walk the Postman collection request by request against the pinned shapes: exact key sets (`usage`), "last event is `done`" (audit events must come before it), header behaviour when a token is unset.
+- ruff rules that bite API and test code: `B008` (FastAPI calls in defaults, use `Annotated`) and `ASYNC110` (a `while` loop that only sleeps).
+- A CLI that prints events live doubles its output if the trace logger still writes JSON lines to stdout.
+- plans/README "If time runs short" still lists M2 T4 as a cut although M2 is done: report it, do not edit the owner's cut list.
 
 Validated approach (owner accepted every default in M1 and M2 round 1, 2026-09-27): write each question's recommended default into the rules before asking, and list what each other answer would change. Finalizing is then small: mark the rules "(owner, round 1)", set Open questions to "None" with a one-line record, add a Pipeline log row, and re-check wording that the answers touch (spec notes, handoffs, test details).
 

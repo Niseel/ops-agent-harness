@@ -7,10 +7,10 @@ How the work in [specs/ops-agent-harness.md](../specs/ops-agent-harness.md) is s
 | [m0-foundation](m0-foundation.md) | `chore/m0-foundation` | Skeleton, ADRs, workflow, intent and spec, plans, design doc, Postman, review guide | 8 | 6.5h | done |
 | [m1-harness-core](m1-harness-core.md) | `feat/m1-harness-core` | State, store, tracer, LLM clients and gateway, tool gateway, policy, loop and runner | 6 | 7.5h | done |
 | [m2-kb-and-eval](m2-kb-and-eval.md) | `feat/m2-kb-and-eval` | Hybrid knowledge base search, golden-set and per-run evaluation | 4 | 5.5h | done |
-| [m3-approval-api-cli](m3-approval-api-cli.md) | `feat/m3-approval-api-cli` | Approval decisions, REST API with live events, recovery, CLI | 4 | 5h | draft |
+| [m3-approval-api-cli](m3-approval-api-cli.md) | `feat/m3-approval-api-cli` | Approval decisions, REST API with live events, recovery, CLI | 6 | 5.5h | approved |
 | [m4-ui](m4-ui.md) | `feat/m4-ui` | Run console UI | 6 | 7.5h | draft |
 | [m5-ship](m5-ship.md) | `chore/m5-ship` | Docker, CI, scenario evals, final docs and review guide | 5 | 3.5h | draft |
-| **Total** | | | **33** | **35.5h** | |
+| **Total** | | | **35** | **36h** | |
 
 ## Where each acceptance criterion is built
 
@@ -41,10 +41,9 @@ How the work in [specs/ops-agent-harness.md](../specs/ops-agent-harness.md) is s
 
 ## If time runs short
 
-The estimate (35.5h) is above the 2–3 day budget. Cut in this order, and list the cut items as limitations in `docs/DESIGN.md`:
+The estimate (36h) is above the 2–3 day budget. Cut in this order, and list the cut items as limitations in `docs/DESIGN.md`:
 
 1. M4 T6, frontend specs (AC-13 then rests on manual steps only).
-2. M2 T4, online evaluation (AC-15 bullets 2 and 3 move to future work).
-3. M5 T1, Docker image (run instructions stay host-based, and FastAPI does not serve the built UI).
+2. M5 T1, Docker image (run instructions stay host-based, and FastAPI does not serve the built UI).
 
-All three cuts save 2.5h, down to 33h: about three long days.
+Both cuts save 1h, down to 35h. M2 T4 (online evaluation) was on this list; M2 is merged, so it is built.
