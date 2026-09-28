@@ -192,6 +192,7 @@ async def _llm_event(
             "latency_ms": round((time.perf_counter() - started) * 1000, 1),
             "outcome": outcome,
             "reason": reason,
-            "tool_calls": [{"id": c["id"], "name": c["name"]} for c in calls or ()],
+            # With args, so the UI can show a call before it runs. The tracer masks secrets in them.
+            "tool_calls": [{"id": c["id"], "name": c["name"], "args": c["args"]} for c in calls or ()],
         },
     )

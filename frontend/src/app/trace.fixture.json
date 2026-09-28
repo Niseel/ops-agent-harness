@@ -1,0 +1,657 @@
+{
+  "run_id": "0c71c37b5b054d999a2b7b2c61080c98",
+  "status": "completed",
+  "events": [
+    {
+      "seq": 1,
+      "run_id": "0c71c37b5b054d999a2b7b2c61080c98",
+      "t_ms": 1790580696782,
+      "kind": "log",
+      "node": null,
+      "tool": null,
+      "status": null,
+      "attention": null,
+      "msg": "anonymous create_run 0c71c37b5b054d999a2b7b2c61080c98",
+      "created_at": "2026-09-28T07:31:36.782Z",
+      "data": {
+        "actor": "anonymous",
+        "action": "create_run",
+        "entity_id": "0c71c37b5b054d999a2b7b2c61080c98"
+      }
+    },
+    {
+      "seq": 2,
+      "run_id": "0c71c37b5b054d999a2b7b2c61080c98",
+      "t_ms": 1790580696799,
+      "kind": "stage",
+      "node": "guard",
+      "tool": null,
+      "status": null,
+      "attention": null,
+      "msg": "step 0 of 8, 0 of 12 tool calls",
+      "created_at": "2026-09-28T07:31:36.799Z",
+      "data": {
+        "steps": 0,
+        "max_steps": 8,
+        "tool_calls": 0,
+        "max_tool_calls": 12
+      }
+    },
+    {
+      "seq": 3,
+      "run_id": "0c71c37b5b054d999a2b7b2c61080c98",
+      "t_ms": 1790580696801,
+      "kind": "stage",
+      "node": "agent",
+      "tool": null,
+      "status": null,
+      "attention": null,
+      "msg": "LLM turn 1",
+      "created_at": "2026-09-28T07:31:36.801Z",
+      "data": null
+    },
+    {
+      "seq": 4,
+      "run_id": "0c71c37b5b054d999a2b7b2c61080c98",
+      "t_ms": 1790580696807,
+      "kind": "llm",
+      "node": "agent",
+      "tool": null,
+      "status": "tool_calls",
+      "attention": null,
+      "msg": "LLM attempt 1: tool_calls",
+      "created_at": "2026-09-28T07:31:36.807Z",
+      "data": {
+        "attempt": 1,
+        "model": "fake",
+        "prompt_sha": "0c9737b25b0a",
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "latency_ms": 0.1,
+        "outcome": "tool_calls",
+        "reason": null,
+        "tool_calls": [
+          {
+            "id": "fake-1",
+            "name": "search_knowledge_base",
+            "args": {
+              "query": "payments-api is slow. Open an incident if it is degraded."
+            }
+          }
+        ]
+      }
+    },
+    {
+      "seq": 5,
+      "run_id": "0c71c37b5b054d999a2b7b2c61080c98",
+      "t_ms": 1790580696810,
+      "kind": "stage",
+      "node": "tools",
+      "tool": null,
+      "status": null,
+      "attention": null,
+      "msg": "1 call(s)",
+      "created_at": "2026-09-28T07:31:36.810Z",
+      "data": null
+    },
+    {
+      "seq": 6,
+      "run_id": "0c71c37b5b054d999a2b7b2c61080c98",
+      "t_ms": 1790580697228,
+      "kind": "stage",
+      "node": "kb.embed",
+      "tool": "search_knowledge_base",
+      "status": "ok",
+      "attention": null,
+      "msg": "query embedded with text-embedding-bge-m3",
+      "created_at": "2026-09-28T07:31:37.228Z",
+      "data": {
+        "tool_call_id": "fake-1",
+        "model": "text-embedding-bge-m3",
+        "reason": null
+      }
+    },
+    {
+      "seq": 7,
+      "run_id": "0c71c37b5b054d999a2b7b2c61080c98",
+      "t_ms": 1790580697229,
+      "kind": "stage",
+      "node": "kb.dense",
+      "tool": "search_knowledge_base",
+      "status": "ok",
+      "attention": null,
+      "msg": "dense: 10 hits",
+      "created_at": "2026-09-28T07:31:37.229Z",
+      "data": {
+        "tool_call_id": "fake-1"
+      }
+    },
+    {
+      "seq": 8,
+      "run_id": "0c71c37b5b054d999a2b7b2c61080c98",
+      "t_ms": 1790580697235,
+      "kind": "stage",
+      "node": "kb.bm25",
+      "tool": "search_knowledge_base",
+      "status": "ok",
+      "attention": null,
+      "msg": "BM25: 10 hits",
+      "created_at": "2026-09-28T07:31:37.235Z",
+      "data": {
+        "tool_call_id": "fake-1"
+      }
+    },
+    {
+      "seq": 9,
+      "run_id": "0c71c37b5b054d999a2b7b2c61080c98",
+      "t_ms": 1790580697235,
+      "kind": "stage",
+      "node": "kb.rrf",
+      "tool": "search_knowledge_base",
+      "status": "ok",
+      "attention": null,
+      "msg": "fused top 3 (hybrid)",
+      "created_at": "2026-09-28T07:31:37.235Z",
+      "data": {
+        "tool_call_id": "fake-1"
+      }
+    },
+    {
+      "seq": 10,
+      "run_id": "0c71c37b5b054d999a2b7b2c61080c98",
+      "t_ms": 1790580697236,
+      "kind": "tool",
+      "node": "tools",
+      "tool": "search_knowledge_base",
+      "status": "ok",
+      "attention": null,
+      "msg": "search_knowledge_base attempt 1: ok",
+      "created_at": "2026-09-28T07:31:37.236Z",
+      "data": {
+        "tool_call_id": "fake-1",
+        "attempt": 1,
+        "args": {
+          "query": "payments-api is slow. Open an incident if it is degraded."
+        },
+        "duration_ms": 426.1,
+        "result": {
+          "ok": true,
+          "data": {
+            "results": [
+              {
+                "doc_id": "severity-policy",
+                "section": "When to open an incident",
+                "snippet": "Open an incident when a service is down,...",
+                "score": 0.0323
+              },
+              {
+                "doc_id": "runbook-payments-api",
+                "section": "5xx errors",
+                "snippet": "HTTP 500, 502 and 503 responses from pay...",
+                "score": 0.0323
+              },
+              {
+                "doc_id": "runbook-payments-api",
+                "section": "High latency",
+                "snippet": "A p95 above 1000 ms makes checkout slow....",
+                "score": 0.032
+              }
+            ],
+            "mode": "hybrid"
+          }
+        }
+      }
+    },
+    {
+      "seq": 11,
+      "run_id": "0c71c37b5b054d999a2b7b2c61080c98",
+      "t_ms": 1790580697251,
+      "kind": "stage",
+      "node": "guard",
+      "tool": null,
+      "status": null,
+      "attention": null,
+      "msg": "step 1 of 8, 1 of 12 tool calls",
+      "created_at": "2026-09-28T07:31:37.251Z",
+      "data": {
+        "steps": 1,
+        "max_steps": 8,
+        "tool_calls": 1,
+        "max_tool_calls": 12
+      }
+    },
+    {
+      "seq": 12,
+      "run_id": "0c71c37b5b054d999a2b7b2c61080c98",
+      "t_ms": 1790580697261,
+      "kind": "stage",
+      "node": "agent",
+      "tool": null,
+      "status": null,
+      "attention": null,
+      "msg": "LLM turn 2",
+      "created_at": "2026-09-28T07:31:37.261Z",
+      "data": null
+    },
+    {
+      "seq": 13,
+      "run_id": "0c71c37b5b054d999a2b7b2c61080c98",
+      "t_ms": 1790580697263,
+      "kind": "llm",
+      "node": "agent",
+      "tool": null,
+      "status": "tool_calls",
+      "attention": null,
+      "msg": "LLM attempt 1: tool_calls",
+      "created_at": "2026-09-28T07:31:37.263Z",
+      "data": {
+        "attempt": 1,
+        "model": "fake",
+        "prompt_sha": "0c9737b25b0a",
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "latency_ms": 0.6,
+        "outcome": "tool_calls",
+        "reason": null,
+        "tool_calls": [
+          {
+            "id": "fake-2",
+            "name": "get_service_status",
+            "args": {
+              "service_name": "payments-api"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "seq": 14,
+      "run_id": "0c71c37b5b054d999a2b7b2c61080c98",
+      "t_ms": 1790580697269,
+      "kind": "stage",
+      "node": "tools",
+      "tool": null,
+      "status": null,
+      "attention": null,
+      "msg": "1 call(s)",
+      "created_at": "2026-09-28T07:31:37.269Z",
+      "data": null
+    },
+    {
+      "seq": 15,
+      "run_id": "0c71c37b5b054d999a2b7b2c61080c98",
+      "t_ms": 1790580699270,
+      "kind": "tool",
+      "node": "tools",
+      "tool": "get_service_status",
+      "status": "timeout",
+      "attention": null,
+      "msg": "get_service_status attempt 1: timeout (no result within 2.0 s)",
+      "created_at": "2026-09-28T07:31:39.270Z",
+      "data": {
+        "tool_call_id": "fake-2",
+        "attempt": 1,
+        "args": {
+          "service_name": "payments-api"
+        },
+        "duration_ms": 2000.9,
+        "result": {
+          "ok": false,
+          "error": {
+            "type": "timeout",
+            "message": "no result within 2.0 s",
+            "retryable": true
+          }
+        }
+      }
+    },
+    {
+      "seq": 16,
+      "run_id": "0c71c37b5b054d999a2b7b2c61080c98",
+      "t_ms": 1790580699277,
+      "kind": "retry",
+      "node": "tools",
+      "tool": "get_service_status",
+      "status": "retry",
+      "attention": "warn",
+      "msg": "get_service_status attempt 1 failed (timeout); retrying in 0.10 s",
+      "created_at": "2026-09-28T07:31:39.277Z",
+      "data": {
+        "tool_call_id": "fake-2",
+        "attempt": 1,
+        "delay_s": 0.102,
+        "reason": "timeout"
+      }
+    },
+    {
+      "seq": 17,
+      "run_id": "0c71c37b5b054d999a2b7b2c61080c98",
+      "t_ms": 1790580701381,
+      "kind": "tool",
+      "node": "tools",
+      "tool": "get_service_status",
+      "status": "timeout",
+      "attention": null,
+      "msg": "get_service_status attempt 2: timeout (no result within 2.0 s)",
+      "created_at": "2026-09-28T07:31:41.381Z",
+      "data": {
+        "tool_call_id": "fake-2",
+        "attempt": 2,
+        "args": {
+          "service_name": "payments-api"
+        },
+        "duration_ms": 2000.0,
+        "result": {
+          "ok": false,
+          "error": {
+            "type": "timeout",
+            "message": "no result within 2.0 s",
+            "retryable": true
+          }
+        }
+      }
+    },
+    {
+      "seq": 18,
+      "run_id": "0c71c37b5b054d999a2b7b2c61080c98",
+      "t_ms": 1790580701382,
+      "kind": "retry",
+      "node": "tools",
+      "tool": "get_service_status",
+      "status": "retry",
+      "attention": "warn",
+      "msg": "get_service_status attempt 2 failed (timeout); retrying in 0.33 s",
+      "created_at": "2026-09-28T07:31:41.382Z",
+      "data": {
+        "tool_call_id": "fake-2",
+        "attempt": 2,
+        "delay_s": 0.331,
+        "reason": "timeout"
+      }
+    },
+    {
+      "seq": 19,
+      "run_id": "0c71c37b5b054d999a2b7b2c61080c98",
+      "t_ms": 1790580701718,
+      "kind": "tool",
+      "node": "tools",
+      "tool": "get_service_status",
+      "status": "ok",
+      "attention": null,
+      "msg": "get_service_status attempt 3: ok",
+      "created_at": "2026-09-28T07:31:41.718Z",
+      "data": {
+        "tool_call_id": "fake-2",
+        "attempt": 3,
+        "args": {
+          "service_name": "payments-api"
+        },
+        "duration_ms": 4.3,
+        "result": {
+          "ok": true,
+          "data": {
+            "service": "payments-api",
+            "status": "degraded",
+            "latency_p95_ms": 2400,
+            "error_rate": 0.12,
+            "updated_at": "2026-09-27T09:00:00.000Z"
+          }
+        }
+      }
+    },
+    {
+      "seq": 20,
+      "run_id": "0c71c37b5b054d999a2b7b2c61080c98",
+      "t_ms": 1790580701730,
+      "kind": "stage",
+      "node": "guard",
+      "tool": null,
+      "status": null,
+      "attention": null,
+      "msg": "step 2 of 8, 2 of 12 tool calls",
+      "created_at": "2026-09-28T07:31:41.730Z",
+      "data": {
+        "steps": 2,
+        "max_steps": 8,
+        "tool_calls": 2,
+        "max_tool_calls": 12
+      }
+    },
+    {
+      "seq": 21,
+      "run_id": "0c71c37b5b054d999a2b7b2c61080c98",
+      "t_ms": 1790580701733,
+      "kind": "stage",
+      "node": "agent",
+      "tool": null,
+      "status": null,
+      "attention": null,
+      "msg": "LLM turn 3",
+      "created_at": "2026-09-28T07:31:41.733Z",
+      "data": null
+    },
+    {
+      "seq": 22,
+      "run_id": "0c71c37b5b054d999a2b7b2c61080c98",
+      "t_ms": 1790580701735,
+      "kind": "llm",
+      "node": "agent",
+      "tool": null,
+      "status": "tool_calls",
+      "attention": null,
+      "msg": "LLM attempt 1: tool_calls",
+      "created_at": "2026-09-28T07:31:41.735Z",
+      "data": {
+        "attempt": 1,
+        "model": "fake",
+        "prompt_sha": "0c9737b25b0a",
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "latency_ms": 0.5,
+        "outcome": "tool_calls",
+        "reason": null,
+        "tool_calls": [
+          {
+            "id": "fake-3",
+            "name": "create_incident",
+            "args": {
+              "title": "payments-api is degraded",
+              "description": "payments-api is slow. Open an incident if it is degraded.\nStatus: degraded, p95 2400 ms, error rate 12.0%.",
+              "severity": "SEV2"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "seq": 23,
+      "run_id": "0c71c37b5b054d999a2b7b2c61080c98",
+      "t_ms": 1790580701739,
+      "kind": "approval",
+      "node": "approval",
+      "tool": "create_incident",
+      "status": "pending",
+      "attention": "warn",
+      "msg": "create_incident waits for a person's approval",
+      "created_at": "2026-09-28T07:31:41.739Z",
+      "data": {
+        "tool_call_id": "fake-3",
+        "tool": "create_incident",
+        "args": {
+          "title": "payments-api is degraded",
+          "description": "payments-api is slow. Open an incident if it is degraded.\nStatus: degraded, p95 2400 ms, error rate 12.0%.",
+          "severity": "SEV2"
+        },
+        "interrupt_id": "757a32802367eb2f5996e39366d10321",
+        "approval_id": "544d09fa7dbb47818b4a0ae6cd5cba0e",
+        "expires_at": "2026-09-28T07:46:41.739Z",
+        "run_error": null
+      }
+    },
+    {
+      "seq": 24,
+      "run_id": "0c71c37b5b054d999a2b7b2c61080c98",
+      "t_ms": 1790580714035,
+      "kind": "approval",
+      "node": "approval",
+      "tool": "create_incident",
+      "status": "approved",
+      "attention": null,
+      "msg": "create_incident approved by anonymous",
+      "created_at": "2026-09-28T07:31:54.035Z",
+      "data": {
+        "approval_id": "544d09fa7dbb47818b4a0ae6cd5cba0e",
+        "tool_call_id": "fake-3",
+        "decision": {
+          "decision": "approve"
+        },
+        "decided_by": "anonymous"
+      }
+    },
+    {
+      "seq": 25,
+      "run_id": "0c71c37b5b054d999a2b7b2c61080c98",
+      "t_ms": 1790580714036,
+      "kind": "log",
+      "node": null,
+      "tool": null,
+      "status": null,
+      "attention": null,
+      "msg": "anonymous decide_approval 544d09fa7dbb47818b4a0ae6cd5cba0e",
+      "created_at": "2026-09-28T07:31:54.036Z",
+      "data": {
+        "actor": "anonymous",
+        "action": "decide_approval",
+        "entity_id": "544d09fa7dbb47818b4a0ae6cd5cba0e"
+      }
+    },
+    {
+      "seq": 26,
+      "run_id": "0c71c37b5b054d999a2b7b2c61080c98",
+      "t_ms": 1790580714041,
+      "kind": "stage",
+      "node": "tools",
+      "tool": null,
+      "status": null,
+      "attention": null,
+      "msg": "1 call(s)",
+      "created_at": "2026-09-28T07:31:54.041Z",
+      "data": null
+    },
+    {
+      "seq": 27,
+      "run_id": "0c71c37b5b054d999a2b7b2c61080c98",
+      "t_ms": 1790580714041,
+      "kind": "tool",
+      "node": "tools",
+      "tool": "create_incident",
+      "status": "ok",
+      "attention": "success",
+      "msg": "create_incident attempt 1: ok",
+      "created_at": "2026-09-28T07:31:54.041Z",
+      "data": {
+        "tool_call_id": "fake-3",
+        "attempt": 1,
+        "args": {
+          "title": "payments-api is degraded",
+          "description": "payments-api is slow. Open an incident if it is degraded.\nStatus: degraded, p95 2400 ms, error rate 12.0%.",
+          "severity": "SEV2"
+        },
+        "duration_ms": 0.4,
+        "result": {
+          "ok": true,
+          "data": {
+            "incident_id": "INC-98AADC82",
+            "status": "open",
+            "created_at": "2026-09-28T07:31:54.041Z"
+          }
+        }
+      }
+    },
+    {
+      "seq": 28,
+      "run_id": "0c71c37b5b054d999a2b7b2c61080c98",
+      "t_ms": 1790580714042,
+      "kind": "stage",
+      "node": "guard",
+      "tool": null,
+      "status": null,
+      "attention": null,
+      "msg": "step 3 of 8, 3 of 12 tool calls",
+      "created_at": "2026-09-28T07:31:54.042Z",
+      "data": {
+        "steps": 3,
+        "max_steps": 8,
+        "tool_calls": 3,
+        "max_tool_calls": 12
+      }
+    },
+    {
+      "seq": 29,
+      "run_id": "0c71c37b5b054d999a2b7b2c61080c98",
+      "t_ms": 1790580714043,
+      "kind": "stage",
+      "node": "agent",
+      "tool": null,
+      "status": null,
+      "attention": null,
+      "msg": "LLM turn 4",
+      "created_at": "2026-09-28T07:31:54.043Z",
+      "data": null
+    },
+    {
+      "seq": 30,
+      "run_id": "0c71c37b5b054d999a2b7b2c61080c98",
+      "t_ms": 1790580714044,
+      "kind": "llm",
+      "node": "agent",
+      "tool": null,
+      "status": "final",
+      "attention": null,
+      "msg": "LLM attempt 1: final",
+      "created_at": "2026-09-28T07:31:54.044Z",
+      "data": {
+        "attempt": 1,
+        "model": "fake",
+        "prompt_sha": "0c9737b25b0a",
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "latency_ms": 0.1,
+        "outcome": "final",
+        "reason": null,
+        "tool_calls": []
+      }
+    },
+    {
+      "seq": 31,
+      "run_id": "0c71c37b5b054d999a2b7b2c61080c98",
+      "t_ms": 1790580714046,
+      "kind": "stage",
+      "node": "finalize",
+      "tool": null,
+      "status": null,
+      "attention": null,
+      "msg": "run completed",
+      "created_at": "2026-09-28T07:31:54.046Z",
+      "data": null
+    },
+    {
+      "seq": 32,
+      "run_id": "0c71c37b5b054d999a2b7b2c61080c98",
+      "t_ms": 1790580714047,
+      "kind": "done",
+      "node": null,
+      "tool": null,
+      "status": "completed",
+      "attention": "success",
+      "msg": "run completed",
+      "created_at": "2026-09-28T07:31:54.047Z",
+      "data": {
+        "status": "completed",
+        "error": null,
+        "steps": 4,
+        "tool_calls": 3
+      }
+    }
+  ]
+}

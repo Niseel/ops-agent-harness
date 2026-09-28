@@ -16,6 +16,11 @@ export interface TraceEvent {
   created_at: string;
 }
 
+/** A tool result (spec: tool envelope). A long result is cut and marked `truncated`. */
+export type Envelope =
+  | { ok: true; data: any; truncated?: true }
+  | { ok: false; error: { type: string; message: string; retryable: boolean } };
+
 export interface RunSummary {
   id: string;
   objective: string;
