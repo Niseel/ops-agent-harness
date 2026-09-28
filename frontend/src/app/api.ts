@@ -153,3 +153,18 @@ export async function api<T>(
   if (!json) throw new ApiError(response.status, 'the answer is not JSON');
   return parsed as T;
 }
+
+/**
+ * Live events of one run (`GET /api/runs/{id}/events`). Closed after `done`: otherwise the browser reconnects
+ * every few seconds and gets empty streams. No `onerror`: after a network error, or a stream that ended without
+ * `done`, the browser reconnects with `Last-Event-ID` by itself. Returns `close`.
+ */
+export function followRun(runId: string, onEvent: (event: TraceEvent) => void): () => void {
+  const source = new EventSource(`/api/runs/${encodeURIComponent(runId)}/events`);
+  source.onmessage = (message) => {
+    const event = JSON.parse(message.data) as TraceEvent;
+    onEvent(event);
+    if (event.kind === 'done') source.close();
+  };
+  return () => source.close();
+}

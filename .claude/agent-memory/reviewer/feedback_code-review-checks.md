@@ -114,3 +114,11 @@ Found in the M4 T1 review (2026-09-28), carry into every UI task that calls `api
 - The frontend `api()` helper throws `ApiError` only for non-2xx answers. A network failure (dev server or uvicorn down) rejects with a raw `TypeError` (no `.detail`), and a 2xx with a non-JSON body resolves to `undefined`. Check each panel's catch shows text for both (`detailText(undefined)` is `JSON.stringify(undefined)` = undefined, not a string). `statusText` is empty over HTTP/2 and in jsdom `new Response` without it.
 - TypeScript 6.0 makes `strict` the default, so the Angular 22 `ng new` tsconfig has no `"strict": true`; that is not a missing option (`npx tsc --showConfig -p tsconfig.app.json`).
 - Frontend lock check: `node -e` over package-lock `packages` for typescript 6.0.x, resolved host registry.npmjs.org only, and linux-x64 optional bindings present (for the M5 CI job).
+
+Found in the M4 T3 review (2026-09-28), carry into T4/T5/T6 (any async UI callback):
+
+- Liveness checks keyed on `runId()` miss a re-open of the same run (click the open run again): the old eval-poll chain still sees its run id, keeps polling into the old store and overwrites the shared timer handle, so `clearTimeout` on the next open/destroy misses one chain. Key the check on the store object (`this.store() === store`) or a generation counter.
+- Overlapping `refresh()` calls (5 s timer plus event-triggered) have no ordering guard: an older detail response landing last shows stale status/final for up to 5 s. Error signals set without the run-id check leak into the next run's panel.
+- LM Studio judge (qwen 9B) took over 5 min for 3 metrics and gave NaN: the 2 min badge poll ends first in local demos (plan risk, accepted).
+- Frontend specs with fake timers need `vi.useFakeTimers({ shouldAdvanceTime: true })`, else zoneless `whenStable()` hangs 5 s per test.
+- A running tester may add spec files during the review: re-run the commands on the final tree before reporting failures.

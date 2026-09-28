@@ -2,6 +2,10 @@ import { TestBed } from '@angular/core/testing';
 import { App } from './app';
 
 describe('App', () => {
+  // The Runs tab loads the runs list at once: no network in tests.
+  beforeEach(() => vi.stubGlobal('fetch', async () => new Response('[]', { status: 200 })));
+  afterEach(() => vi.unstubAllGlobals());
+
   it('renders the three tabs and shows only the chosen panel', async () => {
     const fixture = TestBed.createComponent(App);
     await fixture.whenStable();

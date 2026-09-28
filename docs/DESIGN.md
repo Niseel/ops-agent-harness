@@ -101,7 +101,7 @@ The knowledge base lives in Qdrant, collection `ops_kb`: one point per runbook s
 | Duplicate side effects on retry | Idempotency key `run_id:tool_call_id`; incident cap per run |
 | Endless loops | Step and tool-call limits, repeat guard, repair limit, time limit per segment, recursion limit ([ADR 0011](adr/0011-execution-limits.md)) |
 | Flaky tools and models | Envelope results, retries only for transient errors, reply repair ([ADR 0010](adr/0010-failure-handling-envelope-retry-repair.md)) |
-| Prompt injection in tool output | Tool output is untrusted data in the prompt; the approval gate is the hard stop |
+| Prompt injection in tool output | Tool output is untrusted data in the prompt; the approval gate is the hard stop; the UI shows it as text, never as HTML |
 | Clients asking for more | Limits clamped to `config.yaml`; fault injection only when `ALLOW_FAULT_INJECTION=true` (on by default for local use) |
 | Leaking secrets | Secret values masked in logs, events and API responses |
 | Data sent to external models | Local by default (fake LLM, LM Studio); fixtures are synthetic; cloud providers only when `LLM_*`, `EMBED_*` or `JUDGE_*` point at them; RAGAS usage analytics are off (`RAGAS_DO_NOT_TRACK=true`) |
