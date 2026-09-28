@@ -1,0 +1,240 @@
+<div class="console">
+  <div class="left stack">
+    <section class="panel" aria-labelledby="new-run">
+      <h2 id="new-run">New run</h2>
+      <app-run-form (created)="open($event)" />
+    </section>
+    <section class="panel" aria-labelledby="runs">
+      <h2 id="runs">Runs</h2>
+      @if (listError()) {
+        <p class="error" role="alert">{{ listError() }}</p>
+      }
+      <ul class="runs">
+        @for (run of runs(); track run.id) {
+          <li>
+            <button
+              type="button"
+              class="run-row"
+              [attr.aria-current]="run.id === runId() ? 'true' : null"
+              [title]="run.objective"
+              (click)="open(run.id)"
+            >
+              <span class="mono">{{ short(run.id) }}</span>
+              <span>{{ run.status }}</span>
+              <span class="muted">{{ time(run.created_at) }}</span>
+              <span class="objective">{{ run.objective }}</span>
+            </button>
+          </li>
+        } @empty {
+          <li class="muted">No runs yet.</li>
+        }
+      </ul>
+    </section>
+  </div>
+
+  <section class="center panel" aria-labelledby="run-title">
+    @if (runId(); as id) {
+      <h2 id="run-title">
+        Run <span class="mono">{{ short(id) }}</span> · {{ detail()?.status ?? '…' }} ·
+        {{ store().used().steps }}/{{ detail()?.options?.limits?.['max_steps'] ?? '?' }} steps
+      </h2>
+      @if (runError()) {
+        <p class="error" role="alert">{{ runError() }}</p>
+      }
+      @if (detail()?.status === 'interrupted') {
+        <p class="amber">
+          <span aria-hidden="true">⚠</span> warn: interrupted by a restart; nothing runs until
+          someone resumes it (API or CLI).
+        </p>
+      }
+      <ol class="timeline">
+        @for (item of store().timeline(); track $index) {
+          <li>
+            @if (item.type === 'llm') {
+              <button type="button" class="item" (click)="selected.set(item.event)">
+                <span>{{ item.event.msg }}</span>
+                @for (call of item.event.data?.tool_calls ?? []; track call.id) {
+                  <code>{{ call.name }}({{ compact(call.args) }})</code>
+                }
+                <span class="muted">
+                  {{ item.event.data?.prompt_tokens + item.event.data?.completion_tokens }} tokens ·
+                  {{ item.event.data?.latency_ms }} ms
+                </span>
+              </button>
+            } @else if (item.type === 'call') {
+              <button type="button" class="item call" (click)="selected.set(item.event)">
+                <span>
+                  <strong>{{ item.tool }}</strong> <code>{{ compact(item.args) }}</code>
+                </span>
+                <span>
+                  {{ item.status }}
+                  @if (item.event && attentionStyle(item.event); as style) {
+                    <span [class]="style.colour"
+                      ><span aria-hidden="true">{{ style.icon }}</span> {{ style.word }}</span
+                    >
+                  }
+                  @if (item.attempts) {
+                    · {{ item.attempts }} attempt(s) · {{ item.durationMs }} ms
+                  }
+                  @if (item.result) {
+                    · {{ resultText(item.result) }}
+                  }
+                  @if (item.approval) {
+                    · approval {{ item.approval.status }}
+                  }
+                </span>
+                @if (
+                  item.approval?.status === 'pending' &&
+                  item.approval?.data?.run_error === 'max_tool_calls'
+                ) {
+                  <span class="amber"
+                    >The run ends after this call: the tool-call limit is reached.</span
+                  >
+                }
+                @for (badge of item.badges; track badge.seq) {
+                  <span
+                    [class]="'badge ' + (attentionStyle(badge)?.colour ?? '')"
+                    [title]="badge.data?.error ?? ''"
+                  >
+                    @if (attentionStyle(badge); as style) {
+                      <span aria-hidden="true">{{ style.icon }}</span> {{ style.word }}
+                    }
+                    {{ badgeText(badge) }}
+                  </span>
+                }
+              </button>
+            } @else {
+              <button type="button" class="item done" (click)="selected.set(item.event)">
+                <span>
+                  <strong>{{ item.event.status }}</strong>
+                  @if (attentionStyle(item.event); as style) {
+                    <span [class]="style.colour"
+                      ><span aria-hidden="true">{{ style.icon }}</span> {{ style.word }}</span
+                    >
+                  }
+                  @if (item.event.data?.error) {
+                    · {{ item.event.data.error }}
+                  }
+                </span>
+                @if (detail()?.final; as final) {
+                  <span class="final">{{ final }}</span>
+                }
+                @for (badge of item.badges; track badge.seq) {
+                  <span
+                    [class]="'badge ' + (attentionStyle(badge)?.colour ?? '')"
+                    [title]="badge.data?.error ?? ''"
+                  >
+                    @if (attentionStyle(badge); as style) {
+                      <span aria-hidden="true">{{ style.icon }}</span> {{ style.word }}
+                    }
+                    {{ badgeText(badge) }}
+                  </span>
+                }
+              </button>
+            }
+          </li>
+        } @empty {
+          <li class="muted">Waiting for the first event…</li>
+        }
+      </ol>
+    } @else {
+      <h2 id="run-title">Run</h2>
+      <p class="muted">Start a run or pick one from the list.</p>
+    }
+  </section>
+
+  <div class="right stack">
+    <section class="panel" aria-labelledby="approvals">
+      <h2 id="approvals">Approvals ({{ approvals().length }})</h2>
+      @if (approvalsError()) {
+        <p class="error" role="alert">{{ approvalsError() }}</p>
+      }
+      <app-approval-inbox
+        [approvals]="approvals()"
+        (decided)="refresh()"
+        (openRun)="open($event)"
+      />
+    </section>
+    <section class="panel" aria-labelledby="budget">
+      <h2 id="budget">Budget</h2>
+      @for (meter of budget(); track meter.label) {
+        <label class="meter">
+          <span>{{ meter.label }} {{ meter.text }}</span>
+          <meter min="0" [max]="meter.max" [value]="meter.used"></meter>
+        </label>
+      } @empty {
+        <p class="muted">Open a run to see its budget.</p>
+      }
+    </section>
+    <section class="panel" aria-labelledby="attention">
+      <h2 id="attention">Attention</h2>
+      <ul class="attention">
+        @for (event of store().attention(); track event.seq) {
+          @if (attentionStyle(event); as style) {
+            <li>
+              <button type="button" class="item" (click)="selected.set(event)">
+                <span [class]="style.colour">
+                  <span aria-hidden="true">{{ style.icon }}</span> {{ style.word }}
+                </span>
+                <span>{{ eventText(event) }}</span>
+                <span class="muted">{{ time(event.created_at) }}</span>
+              </button>
+            </li>
+          }
+        } @empty {
+          <li class="muted">Nothing needs attention.</li>
+        }
+      </ul>
+    </section>
+  </div>
+
+  <div class="bottom stack">
+    @if (runId()) {
+      <section class="panel now" aria-live="polite" aria-labelledby="now">
+        <h2 id="now">Now</h2>
+        <p class="mono">{{ nowText() }}</p>
+      </section>
+      <section class="panel" aria-labelledby="flow">
+        <h2 id="flow">Flow</h2>
+        <app-flow-diagram [nodes]="store().nodes()" [active]="activeNode()" />
+      </section>
+      <section class="panel" aria-labelledby="console">
+        <h2 id="console">Console</h2>
+        <div class="row" role="group" aria-label="Filter">
+          @for (f of filters; track f) {
+            <button type="button" [attr.aria-pressed]="filter() === f" (click)="filter.set(f)">
+              {{ f }}
+            </button>
+          }
+        </div>
+        <ol class="console-lines mono">
+          @for (event of consoleEvents(); track event.seq) {
+            <li>
+              <button type="button" class="line" (click)="selected.set(event)">
+                <span class="muted">{{ offset(event) }}</span>
+                <span>{{ event.kind }}</span>
+                <span>{{ event.tool ?? event.node ?? '-' }}</span>
+                <span>{{ eventText(event) }}</span>
+                @if (attentionStyle(event); as style) {
+                  <span [class]="style.colour">
+                    <span aria-hidden="true">{{ style.icon }}</span> {{ style.word }}
+                  </span>
+                }
+              </button>
+            </li>
+          } @empty {
+            <li class="muted">No events for this filter.</li>
+          }
+        </ol>
+      </section>
+    }
+    <section class="panel" aria-labelledby="detail">
+      <h2 id="detail">Detail</h2>
+      @if (selected(); as event) {
+        <pre>{{ event | json }}</pre>
+      } @else {
+        <p class="muted">Select a step to see its data.</p>
+      }
+    </section>
+  </div>
+</div>

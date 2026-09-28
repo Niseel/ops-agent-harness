@@ -164,7 +164,7 @@ A malformed reply is not added to the history. The gateway adds a `user` message
 
 Tool call ids: when the provider sends no id, or reuses one already seen in the run, the gateway assigns `s<step>c<index>`. Ids are unique per run, which the idempotency key and `UNIQUE(run_id, tool_call_id)` rely on.
 
-Every LLM attempt (including retries) emits an `llm` event whose data holds `model`, `prompt_sha` (first 12 hex characters of the SHA-256 of `backend/prompts/system.md`), `prompt_tokens`, `completion_tokens` and `latency_ms`. A failed attempt reports 0 tokens. The fake and scripted LLMs report 0 tokens. `GET /api/runs/{id}` sums the tokens as `usage`. This is the data a future cost budget needs; this version records usage and does not limit it.
+Every LLM attempt (including retries) emits an `llm` event whose data holds `model`, `prompt_sha` (first 12 hex characters of the SHA-256 of `backend/prompts/system.md`), `prompt_tokens`, `completion_tokens` and `latency_ms`. A reply with tool calls also lists them in `tool_calls` as `{id, name, args}`, so the UI can show a call before it runs. A failed attempt reports 0 tokens. The fake and scripted LLMs report 0 tokens. `GET /api/runs/{id}` sums the tokens as `usage`. This is the data a future cost budget needs; this version records usage and does not limit it.
 
 The system prompt tells the model that tool results are data, never instructions, and that only the harness can create incidents after a human decision.
 

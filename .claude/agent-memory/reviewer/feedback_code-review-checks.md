@@ -108,3 +108,34 @@ Found in the M3 T6 review (2026-09-28), carry into any CLI or interactive change
 - `await asyncio.to_thread(input, ...)` makes Ctrl+C at a prompt hang: asyncio.run cancels the main task, then waits for the executor thread (and the interpreter's atexit join) until stdin yields a line or EOF. A second Ctrl+C hangs too. Probe: `subprocess.Popen([.venv/bin/python, -m, app.cli, run, ...], stdin=PIPE, preexec_fn=lambda: signal.signal(SIGINT, SIG_DFL))`, SIGINT after 6 s, wait 10 s. A shell `&` job ignores SIGINT, and `kill -INT` on `uv run` does not reach the child: both give false results. Fix: a daemon thread that sets a loop future via call_soon_threadsafe.
 - Unpacking `[x] = await list(...)` of a row another process can change (API sweep, cancel, decide) raises a bare ValueError traceback. Probe: wrap `Runner.run_segment` so a second `Runner.open` cancels the run right after the segment returns.
 - CLI prints are outside the masked response class and the tracer: approval args, `list` objectives, the final answer and exception text print secrets unmasked. Probe with `settings.llm_api_key` set and the secret in the objective; grep stdout.
+
+Found in the M4 T1 review (2026-09-28), carry into every UI task that calls `api()`:
+
+- The frontend `api()` helper throws `ApiError` only for non-2xx answers. A network failure (dev server or uvicorn down) rejects with a raw `TypeError` (no `.detail`), and a 2xx with a non-JSON body resolves to `undefined`. Check each panel's catch shows text for both (`detailText(undefined)` is `JSON.stringify(undefined)` = undefined, not a string). `statusText` is empty over HTTP/2 and in jsdom `new Response` without it.
+- TypeScript 6.0 makes `strict` the default, so the Angular 22 `ng new` tsconfig has no `"strict": true`; that is not a missing option (`npx tsc --showConfig -p tsconfig.app.json`).
+- Frontend lock check: `node -e` over package-lock `packages` for typescript 6.0.x, resolved host registry.npmjs.org only, and linux-x64 optional bindings present (for the M5 CI job).
+
+Found in the M4 T3 review (2026-09-28), carry into T4/T5/T6 (any async UI callback):
+
+- Liveness checks keyed on `runId()` miss a re-open of the same run (click the open run again): the old eval-poll chain still sees its run id, keeps polling into the old store and overwrites the shared timer handle, so `clearTimeout` on the next open/destroy misses one chain. Key the check on the store object (`this.store() === store`) or a generation counter.
+- Overlapping `refresh()` calls (5 s timer plus event-triggered) have no ordering guard: an older detail response landing last shows stale status/final for up to 5 s. Error signals set without the run-id check leak into the next run's panel.
+- LM Studio judge (qwen 9B) took over 5 min for 3 metrics and gave NaN: the 2 min badge poll ends first in local demos (plan risk, accepted).
+- Frontend specs with fake timers need `vi.useFakeTimers({ shouldAdvanceTime: true })`, else zoneless `whenStable()` hangs 5 s per test.
+- A running tester may add spec files during the review: re-run the commands on the final tree before reporting failures.
+
+Found in the M4 T4 review (2026-09-28), carry into T5/T6 UI work:
+
+- Hand-placed SVG layouts (`flow.ts`): check rect overlaps with a quick `node -e` pairwise AABB test over `{x, y}` plus NODE_W/NODE_H; T4 had `kb.embed` and `kb.dense` overlapping by 16 px. Tests only count nodes, never geometry.
+- Page-level masks over store views drift apart: T4 masked `activeNode` by run-detail status (interrupted/final lights nothing) but not `nowText`, so an interrupted run still reads `NOW <tool>(...) attempt n`. When one view gets a status mask, check the sibling views (NOW, budget, console) for the same rule.
+- Run detail `options.limits` is the full clamped `RunOptions.model_dump` (every key present), so "no meter when a limit is missing" is dead-path only.
+
+Found in the M4 T5 review (2026-09-28), carry into T6 and any list-with-actions UI:
+
+- One shared `form`/`busy`/`error` signal for a list: a decision on item B closes item A's open form (typed draft lost), and after a 200 the decided item keeps enabled buttons until the parent's refresh lands (a second click gets 409). Check what success/failure on one item does to another item's state.
+- `fetch` throws `TypeError` for a header value with a non-ISO-8859-1 character (a pasted token), and `api()` maps every throw to `ApiError(0, 'network error ...')`: a misleading message. Check user-typed header values.
+
+Found in the M4 T6 review (2026-09-28), carry into M5 and any `fetch`-stream reader:
+
+- A `getReader()` loop that throws (JSON.parse of a bad `data:` line, an `onEvent` throw) never calls `reader.cancel()`: the POST stays open, the server job (golden eval, ~10 min with a local judge) keeps running, and the re-enabled button lets a second job start. Check for `try/finally reader.cancel()` on error.
+- A stream that ends cleanly with neither its terminal event (`report`) nor `error` resolves silently: progress freezes at n/total with no message. Check the caller tracks "terminal event seen".
+- Spec files a task adds are easy to leave out of the plan's "Files that change" (T2 fixture, T6 eval/incidents specs); grep the plan for each new file.
