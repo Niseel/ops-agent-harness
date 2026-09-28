@@ -9,8 +9,8 @@ How the work in [specs/ops-agent-harness.md](../specs/ops-agent-harness.md) is s
 | [m2-kb-and-eval](m2-kb-and-eval.md) | `feat/m2-kb-and-eval` | Hybrid knowledge base search, golden-set and per-run evaluation | 4 | 5.5h | done |
 | [m3-approval-api-cli](m3-approval-api-cli.md) | `feat/m3-approval-api-cli` | Approval decisions, REST API with live events, recovery, CLI | 6 | 5.5h | done |
 | [m4-ui](m4-ui.md) | `feat/m4-ui` | Run console UI | 6 | 5.5h | done |
-| [m5-ship](m5-ship.md) | `chore/m5-ship` | Docker, CI, scenario evals, final docs and review guide | 5 | 3.5h | draft |
-| **Total** | | | **35** | **34h** | |
+| [m5-ship](m5-ship.md) | `chore/m5-ship` | Docker, CI, scenario evals, final docs and review guide | 5 | 4h | approved |
+| **Total** | | | **35** | **34.5h** | |
 
 ## Where each acceptance criterion is built
 
@@ -41,9 +41,8 @@ How the work in [specs/ops-agent-harness.md](../specs/ops-agent-harness.md) is s
 
 ## If time runs short
 
-The estimate (34h) is above the 2–3 day budget. Cut in this order, and list the cut items as limitations in `docs/DESIGN.md`:
+The estimate (34.5h) is above the 2–3 day budget. Cut in this order, and list the cut items as limitations in `docs/DESIGN.md`:
 
-1. M4 T6, Evaluation and Incidents tabs (the golden-set report and the incidents stay available through Postman and the CLI; AC-15 keeps its API tests). This replaced "M4 T6, frontend specs" when each M4 task took its own specs (planner, 2026-09-28; confirm at gate 1).
-2. M5 T1, Docker image (run instructions stay host-based, and FastAPI does not serve the built UI).
+1. M5 T1, Docker image (run instructions stay host-based, and FastAPI does not serve the built UI).
 
-Both cuts save 1.25h, down to 32.75h. M2 T4 (online evaluation) was on this list; M2 is merged, so it is built.
+The cut saves 0.75h, down to 33.75h. M2 T4 (online evaluation) and M4 T6 (Evaluation and Incidents tabs) were on this list; M2 and M4 are merged, so both are built (planner, 2026-09-28; confirm at gate 1).
