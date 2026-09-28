@@ -1,6 +1,6 @@
 # Plan: M3 approval, API and CLI   (from [specs/ops-agent-harness.md](../specs/ops-agent-harness.md))
 
-Status: approved (gate 1, 2026-09-28). Branch: `feat/m3-approval-api-cli`. PR title: `feat: M3 approval, API and CLI`.
+Status: done (gate 1 approved 2026-09-28; all six tasks committed 2026-09-28). Branch: `feat/m3-approval-api-cli`. PR title: `feat: M3 approval, API and CLI`.
 
 Human decisions on approvals, the run lifecycle around them (background segments, cancel, expiry, recovery), the REST API with live events, and the CLI. After this milestone the harness is usable from Postman and the terminal. The approval node (`interrupt()`) exists since M1; online evaluation runs in the runner after `done` since M2.
 
@@ -384,6 +384,9 @@ Each note goes in the commit of the task that builds the behaviour. The spec can
   - Decisions: `POST /api/runs/{id}/approvals/{approval_id}`, with `X-Approver-Token` when the server sets `APPROVER_TOKEN` (a UI setting). 401, 404, 409 and 422 bodies are `{"detail": ...}` (FastAPI's own 422 has a list); a 422 on edit keeps the approval pending.
   - `POST /api/eval/kb` streams over POST, which `EventSource` cannot send: use `fetch` and read the `event:` and `data:` lines.
   - Timeline from the run detail's `calls`; budget meters from the guard `stage` data (M1); a status indicator from `GET /api/health`.
+  - Health embeds one word per call (a billed request on a paid endpoint): poll it every 30 s or more, not every second (reviewer T5).
+  - A cancel that waits more than 5 s for the run's lock ends an open event stream without `done`; `EventSource` reconnects with `Last-Event-ID` and gets it (reviewer T5).
+  - `tracer.mask` masks values, not dict keys: a secret used as a key in edited args would show in `/events` (reviewer T5).
 - M5 (ship):
   - Docker command: `uvicorn app.main:app --host 0.0.0.0 --port 8000 --timeout-graceful-shutdown 5`.
   - `evals/run.sh`: create the run, poll to `awaiting_approval`, take the run's pending approval, send the next entry of `decisions`, and repeat per pause (one approval at a time); poll to a final status; save `/trace`. `check.sh`: attempts from `tool` events (`data.attempt`), status from the `done` event, incidents from `ok` `tool` events of `create_incident`.
@@ -424,3 +427,5 @@ None. In round 1 (2026-09-28) the owner accepted all three defaults: several app
 | T6 tester | PASS | 496 tests (live judge test deselected). Added: `resume` of an unknown run (exit 1), a decision made elsewhere before the prompt answer (Conflict, exit 1), `show` masks a configured secret in plain and JSON-escaped form |
 | T6 reviewer | REQUEST CHANGES, fixed | MAJOR fixed: Ctrl+C at the approval prompt hung until Enter or EOF, because the `asyncio.to_thread` worker blocked in `input()` is joined at exit; the prompt now reads in a daemon thread that settles a future on the loop, and `main` turns KeyboardInterrupt into a note and exit 1 (smoke: exit after 0.24 s). MINOR fixed: no pending approval at the prompt (another process decided, expired or cancelled it) prints a message and exits 1 instead of an unpack traceback; the approval args, `list` objectives, the final answer and error texts are masked like `show`. Each fix has a test that fails on the previous code. NIT carried: a dead printer task (e.g. a broken stdout pipe) is silent until the drain. 499 tests |
 | T6 re-review | APPROVE | All three fixes re-probed: one or two SIGINTs at the prompt exit 1 in under a second with the approval still pending; no traceback when the approval vanished; no secret in `run` or `list` output. NITs: masked args copied into `[e]dit` become `***` (harmless); the test prompt thread lives up to 5 s after its test. 499 tests |
+| T6 commit | cd91c1c | |
+| Wrap-up | done | plans/README status `done`; PR #4 description completed |
