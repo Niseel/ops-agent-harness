@@ -27,13 +27,10 @@ class EvalRequest(Strict):
 
 async def available_kb() -> qdrant.KnowledgeBase:
     """503 before streaming (and before the audit event) when the knowledge base cannot answer."""
-    try:
-        kb = qdrant.get_kb()
-        if await kb.status() != "unavailable":
-            return kb
-    except Exception:
-        pass
-    raise HTTPException(503, "knowledge base unavailable")
+    kb = await qdrant.available_kb()
+    if kb is None:
+        raise HTTPException(503, "knowledge base unavailable")
+    return kb
 
 
 @router.post("/eval/kb", response_class=EventSourceResponse)

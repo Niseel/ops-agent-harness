@@ -293,7 +293,8 @@ Every state-changing call (create run, decide, resume, cancel, start evaluation)
 `uv run python -m app.cli <command>`, same database as the API:
 
 - `run "<objective>" [--llm fake|openai] [--faults JSON] [--max-steps N] [--no-eval]`: prints events live; on an approval it asks `[a]pprove / [r]eject / [e]dit`. `--faults` follows the same rules as the API, including `ALLOW_FAULT_INJECTION`.
-- `list`, `show <run_id>`, `resume <run_id>`, `ingest`, `eval`.
+- `list [--limit N]`, `show <run_id>`, `resume <run_id>`, `ingest [--force]` (rebuild even when unchanged), `eval [--modes hybrid,dense,sparse]`.
+- Exit code 0 when the command worked (for `run` and `resume`: the run completed), 1 otherwise, 2 for bad arguments or input. At an approval prompt, end of input leaves the approval pending.
 
 ### UI
 
