@@ -3,9 +3,11 @@ import logging
 import math
 import zlib
 
+import httpx2
 import pytest
 from qdrant_client import AsyncQdrantClient
 
+from app.api import get_runner
 from app.config import cfg, settings
 from app.eval import metrics
 from app.eval.metrics import RagasJudge
@@ -15,6 +17,7 @@ from app.harness.tracer import Tracer
 from app.kb import qdrant, sparse
 from app.kb.ingest import ingest
 from app.llm.openai_compat import OpenAICompatEmbedder
+from app.main import app
 
 SECRET = "sk-test-secret-123"
 
@@ -198,3 +201,21 @@ async def wait_for_status(runner, run_id, *statuses, within_s=5.0) -> dict:
             return run
         await asyncio.sleep(0.02)
     pytest.fail(f"run {run_id} is {run['status']}, not {statuses}, after {within_s} s")
+
+
+# --- M3 T4: the API --------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def tmp_db_path(monkeypatch, tmp_path):
+    """The lifespan opens a runner: never on data/harness.db. The runner fixture uses the same file."""
+    monkeypatch.setattr(settings, "db_path", tmp_path / "harness.db")
+
+
+@pytest.fixture
+async def api(runner):
+    """An HTTP client on the app, with the test's runner. No lifespan: the runner fixture cleans up."""
+    app.dependency_overrides[get_runner] = lambda: runner
+    async with httpx2.AsyncClient(transport=httpx2.ASGITransport(app=app), base_url="http://test") as client:
+        yield client
+    app.dependency_overrides.clear()

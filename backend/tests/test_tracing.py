@@ -1,6 +1,7 @@
 import json
 import logging
 import re
+import sys
 from pathlib import Path
 
 import pytest
@@ -224,3 +225,18 @@ def test_only_clock_formats_timestamps():
         if p.relative_to(app) != Path("clock.py") and pattern.search(p.read_text())
     ]
     assert offenders == []
+
+
+def test_uvicorn_lines_go_through_the_masked_root(capsys):
+    server = logging.getLogger("uvicorn.error")
+    server.handlers[:] = [logging.StreamHandler(sys.stderr)]  # what uvicorn installs before it imports the app
+    server.propagate = False
+    log.setup("INFO", "json", [SECRET])
+    try:
+        raise RuntimeError(f"bad key {SECRET}")
+    except RuntimeError:
+        server.exception("Exception in ASGI application")
+    captured = capsys.readouterr()
+    assert SECRET not in captured.out + captured.err
+    assert any("bad key ***" in line.get("exc", "") for line in _json_lines(captured.out))
+    assert all(not logging.getLogger(name).handlers for name in ("uvicorn", "uvicorn.error", "uvicorn.access"))

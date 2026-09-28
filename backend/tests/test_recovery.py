@@ -1,7 +1,15 @@
-import pytest
+import asyncio
+from dataclasses import replace
 
+import httpx2
+import pytest
+from conftest import wait_for_status
+
+from app import main
+from app.config import settings
 from app.harness.runner import Conflict, NotFound, Runner
 from app.llm.fake import ScriptedLLM, calls, final
+from app.tools import registry
 
 INCIDENT = {"title": "payments-api is degraded", "description": "p95 2400 ms, error rate 12%.", "severity": "SEV2"}
 STATUS = ("get_service_status", {"service_name": "payments-api"})
@@ -125,3 +133,53 @@ async def test_request_resume_needs_interrupted(runner):
     assert await runner.request_resume(run["id"], actor="anonymous") == {"run_id": run["id"], "status": "running"}
     audit = (await runner.store.list_events(run["id"]))[-1]
     assert audit["data"] == {"actor": "anonymous", "action": "resume_run", "entity_id": run["id"]}
+
+
+# --- T4: through the API and its lifespan -------------------------------------------------------
+
+
+def hanging_status(monkeypatch):
+    started, release = asyncio.Event(), asyncio.Event()
+    tool = registry.TOOLS["get_service_status"]
+    real = tool.run
+
+    async def hang(args, ctx):
+        started.set()
+        await release.wait()
+        return await real(args, ctx)
+
+    monkeypatch.setitem(registry.TOOLS, tool.name, replace(tool, run=hang))
+    return started, release
+
+
+async def client_for(app):
+    return httpx2.AsyncClient(transport=httpx2.ASGITransport(app=app), base_url="http://test")
+
+
+async def test_running_becomes_interrupted_on_startup(monkeypatch):
+    monkeypatch.setattr(settings, "llm_default", "fake")
+    started, _ = hanging_status(monkeypatch)
+    async with main.lifespan(main.app), await client_for(main.app) as api:
+        run_id = (await api.post("/api/runs", json={"objective": "Check payments-api"})).json()["run_id"]
+        await asyncio.wait_for(started.wait(), 5)  # the segment is inside the tool when the process stops
+    async with main.lifespan(main.app), await client_for(main.app) as api:
+        detail = (await api.get(f"/api/runs/{run_id}")).json()
+        assert detail["status"] == "interrupted"
+        assert "done" not in [e["kind"] for e in (await api.get(f"/api/runs/{run_id}/trace")).json()["events"]]
+
+
+async def test_resume_finishes_run(monkeypatch):
+    monkeypatch.setattr(settings, "llm_default", "fake")
+    started, release = hanging_status(monkeypatch)
+    async with main.lifespan(main.app), await client_for(main.app) as api:
+        run_id = (await api.post("/api/runs", json={"objective": "Check payments-api"})).json()["run_id"]
+        await asyncio.wait_for(started.wait(), 5)
+    release.set()  # the tool answers after the restart
+    async with main.lifespan(main.app), await client_for(main.app) as api:
+        resumed = await api.post(f"/api/runs/{run_id}/resume")
+        assert resumed.status_code == 202 and resumed.json() == {"run_id": run_id, "status": "running"}
+        await wait_for_status(main.app.state.runner, run_id, "completed")
+        trace = (await api.get(f"/api/runs/{run_id}/trace")).json()["events"]
+        assert [e["kind"] for e in trace].count("done") == 1
+        audit = [e["data"]["action"] for e in trace if e["kind"] == "log"]
+        assert audit == ["create_run", "resume_run"]

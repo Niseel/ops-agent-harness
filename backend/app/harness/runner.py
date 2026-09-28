@@ -344,6 +344,36 @@ class Runner:
             return await self._pause(run_id, out.value, out.interrupts)
         return await self._finish(run_id, opts, out.value["error"], out.value)
 
+    async def run_detail(self, run_id: str) -> dict | None:
+        """Everything about one run (spec: API, GET /api/runs/{id}); None for an unknown run."""
+        run = await self.store.get_run(run_id)
+        if run is None:
+            return None
+        calls: dict[str, dict] = {}  # by tool_call_id, in first-seen order
+        usage = {"prompt_tokens": 0, "completion_tokens": 0}
+        for event in await self.store.list_events(run_id):
+            data = event["data"] or {}
+            if event["kind"] == "tool":
+                call = calls.setdefault(
+                    data["tool_call_id"],
+                    {"tool_call_id": data["tool_call_id"], "tool": event["tool"], "attempts": 0, "duration_ms": 0.0},
+                )
+                call["attempts"] = max(call["attempts"], data["attempt"])  # 0 = refused before running
+                call["duration_ms"] = round(call["duration_ms"] + data["duration_ms"], 1)
+                # What ran, from the last attempt (edited args included).
+                call |= {"args": data["args"], "status": event["status"], "result": data["result"]}
+            elif event["kind"] == "llm":
+                for key in usage:
+                    usage[key] += data.get(key) or 0  # a server may send null token counts
+        return {
+            **run,
+            "messages": (await self.get_state(run_id)).get("messages", []),
+            "calls": list(calls.values()),
+            "approvals": await self.store.list_approvals(run_id=run_id),
+            "evals": await self.store.list_evals(run_id),
+            "usage": usage,
+        }
+
     async def get_state(self, run_id: str) -> dict:
         """The run's last checkpoint (empty before the first step)."""
         return (await self.graph.aget_state({"configurable": {"thread_id": run_id}})).values

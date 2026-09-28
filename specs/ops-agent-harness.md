@@ -279,6 +279,10 @@ All routes are under `/api`, return JSON, and follow [the API standard](../.clau
 | GET | `/api/incidents` | | 200 list of `{id, run_id, title, description, severity, status, created_at}` | |
 | GET | `/api/health` | | 200 DB, LLM, embeddings, Qdrant, judge, knowledge base mode (`hybrid`, `sparse_only`, `unavailable`) | |
 
+- Decisions: `reason` (1–500 characters) is required for `reject`; `args` (an object) is required for `edit` and refused with the other decisions. With `APPROVER_TOKEN` set, the token check comes first.
+- `resume` answers 202 and `cancel` 200, both with `{run_id, status}`. `GET /api/approvals` lists the oldest first.
+- An unexpected error answers 500 `{"detail": "internal error"}`. Configured secret values are masked in every response.
+
 Every state-changing call (create run, decide, resume, cancel, start evaluation) emits an event with actor (`current_user()`), action, entity id and time.
 
 ### CLI

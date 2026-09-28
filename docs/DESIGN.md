@@ -97,13 +97,13 @@ The knowledge base lives in Qdrant, collection `ops_kb`: one point per runbook s
 | Risk | Control |
 |---|---|
 | Wrong or harmful tool arguments | Pydantic input models reject unknown fields, wrong types, bad severities and service names; the tool does not run ([spec](../specs/ops-agent-harness.md#tools)) |
-| Side effect without consent | `create_incident` always pauses for approve, edit or reject; the gateway also refuses it without a decision; a cancelled run closes its approvals ([ADR 0009](adr/0009-human-approval-interrupt.md)) |
+| Side effect without consent | `create_incident` always pauses for approve, edit or reject; the gateway also refuses it without a decision; a cancelled run closes its approvals; `X-Approver-Token` is compared in constant time ([ADR 0009](adr/0009-human-approval-interrupt.md)) |
 | Duplicate side effects on retry | Idempotency key `run_id:tool_call_id`; incident cap per run |
 | Endless loops | Step and tool-call limits, repeat guard, repair limit, time limit per segment, recursion limit ([ADR 0011](adr/0011-execution-limits.md)) |
 | Flaky tools and models | Envelope results, retries only for transient errors, reply repair ([ADR 0010](adr/0010-failure-handling-envelope-retry-repair.md)) |
 | Prompt injection in tool output | Tool output is untrusted data in the prompt; the approval gate is the hard stop |
 | Clients asking for more | Limits clamped to `config.yaml`; fault injection only when `ALLOW_FAULT_INJECTION=true` (on by default for local use) |
-| Leaking secrets | Secret values masked in logs and events; never returned by the API |
+| Leaking secrets | Secret values masked in logs, events and API responses |
 | Data sent to external models | Local by default (fake LLM, LM Studio); fixtures are synthetic; cloud providers only when `LLM_*`, `EMBED_*` or `JUDGE_*` point at them; RAGAS usage analytics are off (`RAGAS_DO_NOT_TRACK=true`) |
 | Run state sent to a tracing service | LangGraph installs the LangSmith client, but its tracing is off unless `LANGSMITH_TRACING=true` is set; the harness never sets it |
 
