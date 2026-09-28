@@ -80,6 +80,9 @@ jobs:
           curl -sf --retry 60 --retry-delay 1 --retry-all-errors http://localhost:8000/api/health
       - name: Scenario evals
         run: evals/run.sh
+      - name: Postman demo flow
+        run: |
+          npx --yes newman@6.2.2 run docs/postman_collection.json --folder "1. Demo flow: create → approve → trace"
       - name: API log
         if: failure()
         run: cat "$RUNNER_TEMP/api.log"

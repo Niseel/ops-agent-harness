@@ -159,7 +159,7 @@ Two sources ([backend/app/config.py](../backend/app/config.py)):
 - **No PII handling.** Objectives, tool output and events are stored and sent to the configured models as they are. Use synthetic data or a local model.
 - **Prompt injection is only contained, not detected.** The approval gate stops the only side effect; nothing flags injected text.
 - **Fake LLM.** `FakePlanner` follows fixed rules to show the harness mechanics, not model quality. Some local models write tool calls as text; those are not parsed.
-- **Evaluation quality.** RAGAS scores depend on the judge model; the golden set has about 15 questions.
+- **Evaluation quality.** RAGAS scores depend on the judge model; the golden set has 16 questions.
 - **Manual recovery.** Runs interrupted by a crash wait for someone to resume them.
 - **One process drives a run.** The per-run lock lives in memory. A CLI run decided through the API continues in the API process, and starting the API while a CLI run is `running` marks it `interrupted`.
 - **Live streams and shutdown.** uvicorn waits for open connections before it stops; the run command passes `--timeout-graceful-shutdown 5`, so an open event stream cannot hold it.

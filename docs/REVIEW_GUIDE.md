@@ -25,8 +25,8 @@ cd backend && uv run uvicorn app.main:app --port 8000 --timeout-graceful-shutdow
 
 Then pick one:
 
-- **Postman / newman** (from the repo root): `npx newman run docs/postman_collection.json --folder "1. Demo flow: create → approve → trace"` creates a run, approves the incident and checks the trace.
-- **CLI** (from `backend/`): `uv run python -m app.cli run "payments-api is returning 5xx errors. Investigate and open an incident if needed."` and answer the approval prompt.
+- **Postman / newman** (from the repo root): `npx --yes newman@6.2.2 run docs/postman_collection.json --folder "1. Demo flow: create → approve → trace"` creates a run, approves the incident and checks the trace.
+- **CLI** (from `backend/`): `uv run python -m app.cli run --no-eval "payments-api is returning 5xx errors. Investigate and open an incident if needed."` and answer the approval prompt (`--no-eval` skips online evaluation, which waits minutes for a slow local judge).
 - **UI** (from the repo root): `cd frontend && npm ci && npm start`, open http://localhost:4200. With Docker only: `docker compose --profile app up --build`, open http://localhost:8000.
 
 ## 2. Requirement matrix
@@ -77,7 +77,7 @@ Paths are under `backend/app/` unless shown otherwise. Postman names are exact f
 **Code quality, observability and testing**
 - Trace events, live stream, JSON logs: [DESIGN, Observability](DESIGN.md#5-observability), [ADR 0014](adr/0014-observability-trace-events.md).
 - Each acceptance criterion has named tests in its plan's Proof table ([plans/](../plans/README.md)).
-- CI: [.github/workflows/ci.yml](../.github/workflows/ci.yml) runs ruff and pytest, the frontend format check, tests and build, the scenario evals against a running API (fake LLM, Qdrant), and the commit and branch checks. Process: [docs/AI-SDLC.md](AI-SDLC.md), [CONTRIBUTING.md](../CONTRIBUTING.md), per-task review log in each plan.
+- CI: [.github/workflows/ci.yml](../.github/workflows/ci.yml) runs ruff and pytest, the frontend format check, tests and build, the scenario evals and the Postman demo flow against a running API (fake LLM, Qdrant), and the commit and branch checks. Process: [docs/AI-SDLC.md](AI-SDLC.md), [CONTRIBUTING.md](../CONTRIBUTING.md), per-task review log in each plan.
 
 ## 4. Demo scenarios
 

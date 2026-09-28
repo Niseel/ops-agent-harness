@@ -160,3 +160,9 @@ Found in the M5 T3 review (2026-09-28), carry into T4 (newman step, README eval 
 Found in the M5 resume-hang fix review (2026-09-28):
 
 - Any runner entry that takes `_locks[run_id]` before reading the row can hang behind online evaluation (lock held after `done`, minutes with a slow judge) or a whole segment. Pattern: read the row, 404/409 first, then lock, then the conditional store update (it still decides races). As of this fix: cancel, decide and request_resume check the row first; sweep skips a held lock. Grep `_locks[` on every new lock user. Holding `runner._locks[id]` in a test is the accepted way to simulate a busy run (test_lifecycle, test_api, test_recovery).
+
+Found in the M5 T4 review (2026-09-29), carry into any doc with measured numbers or run steps:
+
+- Eval prose drifts kinder than the table: ADR 0005 said "dense ranks as well as hybrid" while dense MRR 1.00 > hybrid 0.97, and the one hybrid rank-2 is the paraphrase question the prose sells as a hybrid win (BM25's wrong top pulled into RRF first). Check each sentence against the report rows (`sqlite3 -readonly data/harness.db "select rows_json from eval_reports where id=..."`, rows have `rr@10`, `mode_used`, `retrieved_doc_ids`). Unit tests use `FakeEmbedder` (hashed bag of words), so they never show hybrid beating real dense. Keyword-overlap claims ("no shared keywords"): check with `app.kb.sparse.tokens` on query and doc (no stop words, no stemming), not by eye.
+- `main.py` mounts the built UI at import (`UI_DIR.is_dir()`): an API started before `npm run build` serves no UI until restarted. Check README order.
+- Scratch API that mimics CI without touching the owner's `ops_kb`: copy config.yaml with another `kb.collection`, `CONFIG_PATH=<copy> EMBED_BASE_URL=JUDGE_BASE_URL=http://127.0.0.1:9/v1`, then DELETE that collection after.
