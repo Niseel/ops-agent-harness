@@ -133,3 +133,9 @@ Found in the M4 T5 review (2026-09-28), carry into T6 and any list-with-actions 
 
 - One shared `form`/`busy`/`error` signal for a list: a decision on item B closes item A's open form (typed draft lost), and after a 200 the decided item keeps enabled buttons until the parent's refresh lands (a second click gets 409). Check what success/failure on one item does to another item's state.
 - `fetch` throws `TypeError` for a header value with a non-ISO-8859-1 character (a pasted token), and `api()` maps every throw to `ApiError(0, 'network error ...')`: a misleading message. Check user-typed header values.
+
+Found in the M4 T6 review (2026-09-28), carry into M5 and any `fetch`-stream reader:
+
+- A `getReader()` loop that throws (JSON.parse of a bad `data:` line, an `onEvent` throw) never calls `reader.cancel()`: the POST stays open, the server job (golden eval, ~10 min with a local judge) keeps running, and the re-enabled button lets a second job start. Check for `try/finally reader.cancel()` on error.
+- A stream that ends cleanly with neither its terminal event (`report`) nor `error` resolves silently: progress freezes at n/total with no message. Check the caller tracks "terminal event seen".
+- Spec files a task adds are easy to leave out of the plan's "Files that change" (T2 fixture, T6 eval/incidents specs); grep the plan for each new file.

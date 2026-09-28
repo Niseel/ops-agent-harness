@@ -168,3 +168,44 @@ export function followRun(runId: string, onEvent: (event: TraceEvent) => void): 
   };
   return () => source.close();
 }
+
+/**
+ * Server-sent events from a `fetch` body: the evaluation stream is a POST, which `EventSource` cannot send.
+ * An event ends at a blank line, and an unfinished tail waits for the next chunk. `event:` names it (default
+ * `message`); `data:` lines are joined by `\n` and parsed as JSON; `:` lines are comments (the `: ping` keep-alive).
+ */
+export async function readSse(
+  body: ReadableStream<Uint8Array>,
+  onEvent: (name: string, data: any) => void,
+): Promise<void> {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      // On the whole buffer, so a `\r\n` split across two chunks is still found.
+      buffer = (buffer + decoder.decode(value, { stream: !done })).replace(/\r\n/g, '\n');
+      let end: number;
+      while ((end = buffer.indexOf('\n\n')) >= 0) {
+        const block = buffer.slice(0, end);
+        buffer = buffer.slice(end + 2);
+        let name = 'message';
+        const data: string[] = [];
+        for (const line of block.split('\n')) {
+          if (line.startsWith(':')) continue;
+          const colon = line.indexOf(':');
+          const field = colon < 0 ? line : line.slice(0, colon);
+          const text = colon < 0 ? '' : line.slice(colon + 1).replace(/^ /, '');
+          if (field === 'event') name = text;
+          else if (field === 'data') data.push(text);
+        }
+        if (data.length) onEvent(name, JSON.parse(data.join('\n')));
+      }
+      if (done) return;
+    }
+  } catch (error) {
+    await reader.cancel().catch(() => undefined); // leaving closes the request, which stops the server's job
+    throw error;
+  }
+}

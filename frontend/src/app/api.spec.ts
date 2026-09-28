@@ -1,4 +1,4 @@
-import { ApiError, TraceEvent, api, detailText, followRun } from './api';
+import { ApiError, TraceEvent, api, detailText, followRun, readSse } from './api';
 
 /** The error a request failed with; fails the test when it did not fail. */
 const failure = (request: Promise<unknown>): Promise<ApiError> =>
@@ -122,5 +122,95 @@ describe('followRun', () => {
     expect(source.closed).toBe(false);
     close();
     expect(source.closed).toBe(true);
+  });
+});
+
+/** A body that yields these byte chunks, one per read. */
+const streamOf = (chunks: Uint8Array[]): ReadableStream<Uint8Array> =>
+  new ReadableStream({
+    start(controller) {
+      chunks.forEach((chunk) => controller.enqueue(chunk));
+      controller.close();
+    },
+  });
+const bytes = (text: string) => new TextEncoder().encode(text);
+
+describe('readSse', () => {
+  async function read(chunks: Uint8Array[]) {
+    const seen: [string, unknown][] = [];
+    await readSse(streamOf(chunks), (name, data) => seen.push([name, data]));
+    return seen;
+  }
+
+  it('reads event names and data, and skips `: ping` comments', async () => {
+    const seen = await read([
+      bytes(': ping\n\nevent: progress\ndata: {"done":1,"total":2}\nid: 1\n\n'),
+      bytes('data: {"plain":true}\n\n'),
+    ]);
+    expect(seen).toEqual([
+      ['progress', { done: 1, total: 2 }],
+      ['message', { plain: true }],
+    ]);
+  });
+
+  it('joins an event split across two chunks, even inside a character', async () => {
+    const all = bytes('event: report\ndata: {"judge_model":"modèle"}\n\n');
+    const cut = all.indexOf(0xc3) + 1; // between the two bytes of "è"
+    expect(await read([all.slice(0, cut), all.slice(cut)])).toEqual([
+      ['report', { judge_model: 'modèle' }],
+    ]);
+  });
+
+  it('accepts \\r\\n line ends and joins several data lines with \\n', async () => {
+    const seen = await read([
+      bytes('event: error\r\ndata: {"detail":\r'),
+      bytes('\ndata: "x"}\r\n\r\n'),
+    ]);
+    expect(seen).toEqual([['error', { detail: 'x' }]]);
+  });
+
+  it('drops an unfinished event at the end of the stream', async () => {
+    expect(await read([bytes('event: progress\ndata: {"done":1}\n')])).toEqual([]);
+  });
+
+  it('cancels the body when an event cannot be read, so the server stops its job', async () => {
+    let cancelled = false;
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(bytes('event: progress\ndata: {not json\n\n'));
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+    await expect(readSse(body, () => undefined)).rejects.toThrow(SyntaxError);
+    expect(cancelled).toBe(true);
+  });
+
+  it('accepts a data line with no space after the colon', async () => {
+    expect(await read([bytes('event: progress\ndata:{"done":1,"total":2}\n\n')])).toEqual([
+      ['progress', { done: 1, total: 2 }],
+    ]);
+  });
+
+  it('ignores an event with no data line', async () => {
+    expect(
+      await read([bytes('event: progress\nid: 1\n\nevent: report\ndata: {"ok":true}\n\n')]),
+    ).toEqual([['report', { ok: true }]]);
+  });
+
+  it('reads several events delivered in a single chunk', async () => {
+    const seen = await read([
+      bytes(
+        'event: progress\ndata: {"done":1,"total":3}\n\n' +
+          'event: progress\ndata: {"done":2,"total":3}\n\n' +
+          'event: progress\ndata: {"done":3,"total":3}\n\n',
+      ),
+    ]);
+    expect(seen).toEqual([
+      ['progress', { done: 1, total: 3 }],
+      ['progress', { done: 2, total: 3 }],
+      ['progress', { done: 3, total: 3 }],
+    ]);
   });
 });
