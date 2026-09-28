@@ -93,6 +93,8 @@ All scenarios run in the UI (fault switches) and as scenario evals (`evals/`, M5
 | Degraded search | fault `embeddings: error` | search `mode = sparse_only` (blue) |
 | Timeout after commit | fault `create_incident: timeout_after_commit`, then approve | retry, still exactly one incident |
 
+**UI check (AC-13).** With the API on :8000 and `npm start` in `frontend/`, open http://localhost:4200. 1. Start the Approve scenario: the timeline and the NOW bar show each call with its arguments and attempt, and the flow diagram lights the running node. 2. The approval appears in the inbox with a countdown. Approve it (or edit it, or reject it with a reason): the run continues, and the Incidents tab lists the incident. 3. Start the Retry, Step limit and Degraded search scenarios from the fault switches and limits: retries show amber, the limit red and `sparse_only` search blue, each with an icon and a word.
+
 ## 5. Beyond the brief
 
 Hybrid RAG search (R16), RAGAS evaluation (R17), ADRs (R18), this guide (R19), fault injection per run ([0012](adr/0012-fault-injection-per-run.md)), recovery of interrupted runs ([0013](adr/0013-recovery-interrupted-runs.md)), and the AI-SDLC workflow with CI conventions ([0018](adr/0018-adopt-ai-sdlc-workflow.md)).

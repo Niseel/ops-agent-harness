@@ -1,4 +1,6 @@
 import { TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
+import { ApprovalInbox } from './approval-inbox';
 import { RunsPage } from './runs-page';
 import { TraceEvent } from './api';
 
@@ -46,11 +48,13 @@ function stubFetch(opts: {
   runs?: unknown[];
   detail?: () => unknown;
   trace?: () => { events: TraceEvent[] };
+  approvals?: unknown[];
   onCall?: (url: string) => void;
 }) {
   const fetch = vi.fn(async (url: string) => {
     opts.onCall?.(url);
     if (url === '/api/runs') return jsonResponse(opts.runs ?? []);
+    if (url === '/api/approvals?status=pending') return jsonResponse(opts.approvals ?? []);
     if (/\/api\/runs\/[^/]+\/trace$/.test(url))
       return jsonResponse(opts.trace?.() ?? { events: [] });
     if (/\/api\/runs\/[^/]+$/.test(url)) return jsonResponse(opts.detail?.() ?? { id: 'r1' });
@@ -221,7 +225,7 @@ describe('RunsPage', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn((url: string) =>
-        url === '/api/runs'
+        url === '/api/runs' || url === '/api/approvals?status=pending'
           ? Promise.resolve(jsonResponse([]))
           : new Promise<Response>((resolve) =>
               answers.push((detail) => resolve(jsonResponse(detail))),
@@ -252,7 +256,8 @@ describe('RunsPage', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn((url: string) => {
-        if (url === '/api/runs') return Promise.resolve(jsonResponse([]));
+        if (url === '/api/runs' || url === '/api/approvals?status=pending')
+          return Promise.resolve(jsonResponse([]));
         if (!url.endsWith('/trace')) return Promise.resolve(jsonResponse(detail));
         traceCalls += 1;
         // The first read hangs until released; later ones answer at once (never the expected evals).
@@ -272,6 +277,100 @@ describe('RunsPage', () => {
     release();
     await vi.advanceTimersByTimeAsync(10_000);
     expect(traceCalls).toBe(1); // the old chain did not go on
+  });
+
+  it('shows pending approvals in the inbox; a decision refreshes and a run link opens the run', async () => {
+    let approvalReads = 0;
+    stubFetch({
+      approvals: [
+        {
+          id: 'ap1',
+          run_id: 'r2abcdef',
+          tool: 'create_incident',
+          args: { title: 'payments-api 5xx' },
+          status: 'pending',
+          expires_at: '2999-01-01T00:00:00.000Z',
+        },
+      ],
+      onCall: (url) => {
+        if (url === '/api/approvals?status=pending') approvalReads += 1;
+      },
+    });
+    const fixture = TestBed.createComponent(RunsPage);
+    await fixture.whenStable();
+    const root = fixture.nativeElement as HTMLElement;
+    expect(root.querySelector('#approvals')!.textContent).toContain('Approvals (1)');
+    expect(root.querySelector('app-approval-inbox')!.textContent).toContain('payments-api 5xx');
+
+    const readsBefore = approvalReads;
+    const inbox = fixture.debugElement.query(By.directive(ApprovalInbox))
+      .componentInstance as ApprovalInbox;
+    inbox.decided.emit();
+    await fixture.whenStable();
+    expect(approvalReads).toBeGreaterThan(readsBefore);
+
+    inbox.openRun.emit('r2abcdef');
+    await fixture.whenStable();
+    expect(fixture.componentInstance.runId()).toBe('r2abcdef');
+    expect(FakeEventSource.all.at(-1)!.url).toBe('/api/runs/r2abcdef/events');
+  });
+
+  it('refreshes approvals on an approval event of the open run', async () => {
+    let approvalReads = 0;
+    stubFetch({
+      detail: () => ({ id: 'r1', status: 'awaiting_approval', options: { limits: {} } }),
+      onCall: (url) => {
+        if (url === '/api/approvals?status=pending') approvalReads += 1;
+      },
+    });
+    const fixture = TestBed.createComponent(RunsPage);
+    await fixture.whenStable();
+    fixture.componentInstance.open('r1');
+    await fixture.whenStable();
+    const readsBeforeEvent = approvalReads;
+
+    FakeEventSource.all
+      .at(-1)!
+      .send(ev('approval', { node: 'approval', tool: 'create_incident', status: 'pending' }));
+    await fixture.whenStable();
+    expect(approvalReads).toBeGreaterThan(readsBeforeEvent);
+  });
+
+  it('shows the error in the Approvals panel and keeps the last data when the request fails', async () => {
+    let fail = false;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (url === '/api/runs') return jsonResponse([]);
+        if (url === '/api/approvals?status=pending') {
+          if (fail) return new Response('{"detail": "approvals unavailable"}', { status: 500 });
+          return jsonResponse([
+            {
+              id: 'ap1',
+              run_id: 'r2',
+              tool: 'create_incident',
+              args: {},
+              status: 'pending',
+              expires_at: '2999-01-01T00:00:00.000Z',
+            },
+          ]);
+        }
+        return jsonResponse({ id: 'r1' });
+      }),
+    );
+    const fixture = TestBed.createComponent(RunsPage);
+    const page = fixture.componentInstance;
+    await fixture.whenStable();
+    const root = fixture.nativeElement as HTMLElement;
+    expect(root.querySelector('app-approval-inbox')!.textContent).toContain('create_incident');
+
+    fail = true;
+    await page.refresh();
+    await fixture.whenStable();
+    expect(root.querySelector('#approvals')!.closest('section')!.textContent).toContain(
+      'approvals unavailable',
+    );
+    expect(root.querySelector('app-approval-inbox')!.textContent).toContain('create_incident');
   });
 
   describe('NOW bar', () => {

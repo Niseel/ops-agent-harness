@@ -144,6 +144,17 @@
   </section>
 
   <div class="right stack">
+    <section class="panel" aria-labelledby="approvals">
+      <h2 id="approvals">Approvals ({{ approvals().length }})</h2>
+      @if (approvalsError()) {
+        <p class="error" role="alert">{{ approvalsError() }}</p>
+      }
+      <app-approval-inbox
+        [approvals]="approvals()"
+        (decided)="refresh()"
+        (openRun)="open($event)"
+      />
+    </section>
     <section class="panel" aria-labelledby="budget">
       <h2 id="budget">Budget</h2>
       @for (meter of budget(); track meter.label) {

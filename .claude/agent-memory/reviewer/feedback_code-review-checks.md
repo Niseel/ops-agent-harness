@@ -128,3 +128,8 @@ Found in the M4 T4 review (2026-09-28), carry into T5/T6 UI work:
 - Hand-placed SVG layouts (`flow.ts`): check rect overlaps with a quick `node -e` pairwise AABB test over `{x, y}` plus NODE_W/NODE_H; T4 had `kb.embed` and `kb.dense` overlapping by 16 px. Tests only count nodes, never geometry.
 - Page-level masks over store views drift apart: T4 masked `activeNode` by run-detail status (interrupted/final lights nothing) but not `nowText`, so an interrupted run still reads `NOW <tool>(...) attempt n`. When one view gets a status mask, check the sibling views (NOW, budget, console) for the same rule.
 - Run detail `options.limits` is the full clamped `RunOptions.model_dump` (every key present), so "no meter when a limit is missing" is dead-path only.
+
+Found in the M4 T5 review (2026-09-28), carry into T6 and any list-with-actions UI:
+
+- One shared `form`/`busy`/`error` signal for a list: a decision on item B closes item A's open form (typed draft lost), and after a 200 the decided item keeps enabled buttons until the parent's refresh lands (a second click gets 409). Check what success/failure on one item does to another item's state.
+- `fetch` throws `TypeError` for a header value with a non-ISO-8859-1 character (a pasted token), and `api()` maps every throw to `ApiError(0, 'network error ...')`: a misleading message. Check user-typed header values.

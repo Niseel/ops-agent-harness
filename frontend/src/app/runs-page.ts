@@ -1,21 +1,22 @@
 import { JsonPipe } from '@angular/common';
 import { Component, DestroyRef, computed, inject, signal } from '@angular/core';
-import { RunDetail, RunSummary, TraceEvent, api, followRun } from './api';
+import { Approval, RunDetail, RunSummary, TraceEvent, api, followRun } from './api';
+import { ApprovalInbox } from './approval-inbox';
 import { FlowDiagram } from './flow-diagram';
 import { RunForm } from './run-form';
 import { TraceStore, attentionStyle, eventText, resultText } from './trace';
 
-export const REFRESH_MS = 5000; // runs list, open run summary and (T5) approvals
+export const REFRESH_MS = 5000; // runs list, open run summary and pending approvals
 export const EVAL_POLL_MS = 3000; // `/trace` reads after `done`, for the evaluation badges
 export const EVAL_POLL_READS = 40; // 2 min
 
 /**
- * The Runs tab: new run form and runs list (left), timeline (center), budget and attention (right),
+ * The Runs tab: new run form and runs list (left), timeline (center), approvals, budget and attention (right),
  * NOW bar, flow, console and detail panel (bottom).
  */
 @Component({
   selector: 'app-runs-page',
-  imports: [RunForm, FlowDiagram, JsonPipe],
+  imports: [RunForm, ApprovalInbox, FlowDiagram, JsonPipe],
   templateUrl: './runs-page.html',
 })
 export class RunsPage {
@@ -26,6 +27,8 @@ export class RunsPage {
   readonly selected = signal<TraceEvent | null>(null);
   readonly listError = signal('');
   readonly runError = signal('');
+  readonly approvals = signal<Approval[]>([]);
+  readonly approvalsError = signal('');
   protected readonly attentionStyle = attentionStyle;
   protected readonly resultText = resultText;
   protected readonly eventText = eventText;
@@ -109,8 +112,9 @@ export class RunsPage {
   async refresh(): Promise<void> {
     const seq = ++this.refreshSeq;
     const runId = this.runId();
-    const [runs, detail] = await Promise.allSettled([
+    const [runs, approvals, detail] = await Promise.allSettled([
       api<RunSummary[]>('GET', '/api/runs'),
+      api<Approval[]>('GET', '/api/approvals?status=pending'),
       runId
         ? api<RunDetail>('GET', `/api/runs/${encodeURIComponent(runId)}`)
         : Promise.resolve(null),
@@ -118,6 +122,8 @@ export class RunsPage {
     if (seq !== this.refreshSeq) return; // a newer refresh has started
     if (runs.status === 'fulfilled') this.runs.set(runs.value);
     this.listError.set(runs.status === 'rejected' ? message(runs.reason) : '');
+    if (approvals.status === 'fulfilled') this.approvals.set(approvals.value);
+    this.approvalsError.set(approvals.status === 'rejected' ? message(approvals.reason) : '');
     if (!runId || this.runId() !== runId) return;
     if (detail.status === 'fulfilled') this.detail.set(detail.value);
     this.runError.set(detail.status === 'rejected' ? message(detail.reason) : '');
