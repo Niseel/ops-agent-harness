@@ -1,6 +1,6 @@
 ---
 name: plan-checks
-description: Checks that found real gaps when the planner reviewed milestone plans (M1, M2 and M3 phase 1, 2026-09-27); run them on every plans/mN-*.md review
+description: Checks that found real gaps when the planner reviewed milestone plans (M1–M3 phase 1, 2026-09-27; M4 UI phase 1, 2026-09-28); run them on every plans/mN-*.md review
 metadata:
   type: feedback
 ---
@@ -33,6 +33,13 @@ Added in M3 phase 1 (2026-09-27):
 - ruff rules that bite API and test code: `B008` (FastAPI calls in defaults, use `Annotated`) and `ASYNC110` (a `while` loop that only sleeps).
 - A CLI that prints events live doubles its output if the trace logger still writes JSON lines to stdout.
 - plans/README "If time runs short" still lists M2 T4 as a cut although M2 is done: report it, do not edit the owner's cut list.
+
+Added in M4 phase 1 (2026-09-28, UI plan):
+- Map every field a spec'd panel shows to the event or API field that feeds it, at the moment it must show. `tool` events are emitted after each attempt, so the NOW bar had no args during a first attempt: the fix was one backend line (`args` in the `llm` event's `tool_calls`). Also list what the live stream never sends (`eval` events come after `done`) and where the UI reads it instead.
+- Write an "event shapes the UI reads" table from the code (kind, node/tool/status, data keys); the UI rules and the test fixtures both hang on it.
+- Framework defaults change semantics: Angular 22 components are OnPush by default and new apps are zoneless, so pin "state in signals only". Pin a CSS `[hidden] { display: none !important; }` when panels toggle with `hidden` and have their own `display`.
+- A draft with a final "specs" task: move each spec into the task that builds the behaviour, then fix plans/README's cut list, which may name the removed task.
+- Scaffold commands must pass every option so nothing prompts (and `--skip-git`, AI-config off, analytics off).
 
 Validated approach (owner accepted every default in M1 and M2 round 1, 2026-09-27): write each question's recommended default into the rules before asking, and list what each other answer would change. Finalizing is then small: mark the rules "(owner, round 1)", set Open questions to "None" with a one-line record, add a Pipeline log row, and re-check wording that the answers touch (spec notes, handoffs, test details).
 
