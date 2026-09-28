@@ -161,6 +161,7 @@ Two sources ([backend/app/config.py](../backend/app/config.py)):
 - **Fake LLM.** `FakePlanner` follows fixed rules to show the harness mechanics, not model quality. Some local models write tool calls as text; those are not parsed.
 - **Evaluation quality.** RAGAS scores depend on the judge model; the golden set has about 15 questions.
 - **Manual recovery.** Runs interrupted by a crash wait for someone to resume them.
+- **One process drives a run.** The per-run lock lives in memory. A CLI run decided through the API continues in the API process, and starting the API while a CLI run is `running` marks it `interrupted`.
 - **Crash between a write and its event.** A crash right after an approval row or a final row is written can leave it without its `approval` or `done` event. The approval still appears in the approvals list, and the event stream ends on a final run row.
 
 ## 9. Future improvements

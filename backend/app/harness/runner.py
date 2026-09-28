@@ -13,6 +13,9 @@ import asyncio
 import logging
 import time
 import uuid
+from collections import defaultdict
+from collections.abc import Awaitable, Callable
+from functools import partial
 
 import aiosqlite
 from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
@@ -71,6 +74,9 @@ class Runner:
         self.graph = build_graph(saver)
         self._saver_conn = saver_conn
         self._openai: OpenAICompatClient | None = None  # one per process, made on first use
+        # ponytail: one small lock per run id for the life of the process; drop idle ones if runs ever number millions.
+        self._locks: defaultdict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
+        self._tasks: defaultdict[str, set[asyncio.Task]] = defaultdict(set)  # background segments per run
 
     @classmethod
     async def open(cls, db_path) -> "Runner":
@@ -90,8 +96,116 @@ class Runner:
         return cls(store, conn, saver)
 
     async def close(self) -> None:
+        """Cancel every background segment, then close both connections. A cancelled run stays `running`."""
+        tasks = [task for tasks in self._tasks.values() for task in tasks]
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
         await self._saver_conn.close()
         await self.store.close()
+
+    # --- background segments (API) ---------------------------------------------
+
+    def spawn(self, run_id: str, fn: Callable[[], Awaitable]) -> asyncio.Task:
+        """Run `fn()` in the background under the run's lock, so one run never has two segments at once.
+
+        `fn` takes no argument (a partial), so a task cancelled before it starts leaves no un-awaited coroutine.
+        """
+
+        async def locked() -> None:
+            async with self._locks[run_id]:
+                await fn()
+
+        task = asyncio.create_task(locked())
+        self._tasks[run_id].add(task)
+        task.add_done_callback(partial(self._forget, run_id))
+        return task
+
+    def start(self, run_id: str) -> asyncio.Task:
+        # continue_run runs a new run from its start like run_segment, and returns quietly for a run
+        # cancelled between create and start instead of raising "already started".
+        return self.spawn(run_id, partial(self.continue_run, run_id))
+
+    def _forget(self, run_id: str, task: asyncio.Task) -> None:
+        tasks = self._tasks.get(run_id)
+        if tasks is not None:
+            tasks.discard(task)
+            if not tasks:
+                del self._tasks[run_id]
+        if not task.cancelled() and task.exception() is not None:
+            log.error("background segment failed", exc_info=task.exception(), extra={"run_id": run_id})
+
+    async def cancel(self, run_id: str, *, actor: str) -> dict:
+        """Cancel a run that is not final: its pending approvals close, a running segment stops, one `done`."""
+        if await self.store.get_run(run_id) is None:
+            raise NotFound(f"run {run_id} not found")
+        # From the row, so a final run (even one still in online evaluation) is never cancelled twice.
+        if await self.store.cancel_run(run_id, decided_by=actor) is None:
+            raise Conflict(f"run {run_id} is already {(await self.store.get_run(run_id))['status']}")
+        tasks = list(self._tasks.get(run_id, ()))
+        for task in tasks:
+            task.cancel()
+        if tasks:
+            await asyncio.wait(tasks)  # does not raise their CancelledError
+        async with self._locks[run_id]:
+            state = await self.get_state(run_id)
+            steps, tool_calls = state.get("steps", 0), state.get("tool_calls", 0)
+            await self.store.update_run(run_id, steps=steps, tool_calls=tool_calls)
+            await self.audit(run_id, actor, "cancel_run", run_id)
+            await self.tracer.emit(
+                run_id,
+                "done",
+                status=RunStatus.CANCELLED,
+                attention=_DONE_ATTENTION[RunStatus.CANCELLED],
+                msg="run cancelled",
+                data={"status": RunStatus.CANCELLED, "error": None, "steps": steps, "tool_calls": tool_calls},
+            )
+        return {"run_id": run_id, "status": RunStatus.CANCELLED.value}
+
+    async def sweep(self) -> int:
+        """Expire pending approvals past `expires_at` as rejected ("approval expired") and continue their runs."""
+        expired = 0
+        for approval in await self.store.expired_approvals(now_iso()):
+            run_id = approval["run_id"]
+            if self._locks[run_id].locked():
+                continue  # a segment or a decision holds the run: the next sweep retries instead of waiting
+            async with self._locks[run_id]:
+                row = await self.store.decide_approval(
+                    approval["id"], status="expired", decision=None, reason="approval expired", decided_by="system"
+                )
+                if row is None:
+                    continue  # decided or cancelled meanwhile
+                await self._decision_event(run_id, row)
+                await self.audit(run_id, "system", "expire_approval", approval["id"])
+            self.spawn(run_id, partial(self.continue_run, run_id))
+            expired += 1
+        return expired
+
+    async def sweep_forever(self, interval_s: float) -> None:
+        """The API's expiry loop. It sweeps at once, so approvals that expired while it was down are handled."""
+        while True:
+            try:
+                await self.sweep()
+            except Exception:
+                log.exception("expiry sweep failed")
+            await asyncio.sleep(interval_s)
+
+    async def recover(self) -> list[str]:
+        """API startup only: runs left `running` by a crash become `interrupted` (ADR 0013). The CLI never calls it."""
+        run_ids = await self.store.mark_interrupted()
+        for run_id in run_ids:
+            log.warning("run interrupted by a restart; resume it by hand", extra={"run_id": run_id})
+        return run_ids
+
+    async def request_resume(self, run_id: str, *, actor: str) -> dict:
+        """`interrupted` -> `running`. The caller then runs `continue_run` (the API spawns it, the CLI awaits it)."""
+        if await self.store.get_run(run_id) is None:
+            raise NotFound(f"run {run_id} not found")
+        async with self._locks[run_id]:  # like decide: the write and its event stay together
+            if not await self.store.resume_run(run_id):
+                raise Conflict(f"run {run_id} is {(await self.store.get_run(run_id))['status']}, not interrupted")
+            await self.audit(run_id, actor, "resume_run", run_id)
+        return {"run_id": run_id, "status": RunStatus.RUNNING.value}
 
     async def create_run(self, objective: str, *, llm: str | None = None, options: dict | None = None) -> dict:
         """Store a new run with its effective options. Nothing runs yet. Bad input raises ValueError."""
@@ -179,13 +293,15 @@ class Runner:
             if refusal is not None:
                 raise ValueError(refusal["error"]["message"])  # the row stays pending
             stored = model.model_dump(mode="json")
-        row = await self.store.decide_approval(
-            approval_id, status=_APPROVAL_STATUS[decision], decision=stored, reason=reason, decided_by=actor
-        )
-        if row is None:
-            raise Conflict(f"approval {approval_id} was decided or cancelled meanwhile")
-        await self._decision_event(run_id, row)
-        await self.audit(run_id, actor, "decide_approval", approval_id)
+        # Under the run's lock: a segment that is still pausing finishes first, so these events follow its own.
+        async with self._locks[run_id]:
+            row = await self.store.decide_approval(
+                approval_id, status=_APPROVAL_STATUS[decision], decision=stored, reason=reason, decided_by=actor
+            )
+            if row is None:
+                raise Conflict(f"approval {approval_id} was decided or cancelled meanwhile")
+            await self._decision_event(run_id, row)
+            await self.audit(run_id, actor, "decide_approval", approval_id)
         return row
 
     async def audit(self, run_id: str | None, actor: str, action: str, entity_id: str) -> None:

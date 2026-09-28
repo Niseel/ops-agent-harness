@@ -3,6 +3,7 @@ import json
 from datetime import datetime
 
 import pytest
+from conftest import wait_for_status
 
 from app.clock import now_iso
 from app.config import cfg
@@ -429,3 +430,46 @@ async def test_internal_error_after_a_winning_cancel_adds_no_event(runner, monke
     assert await runner.run_segment(run["id"], llm_client=llm) == "cancelled"
     assert await events(runner, run["id"], "error") == []
     assert await events(runner, run["id"], "done") == []  # the cancel path (T3) writes its own
+
+
+# --- T3: expiry and cancel -----------------------------------------------------------------------
+
+
+async def test_expired_approval_rejects(runner, monkeypatch):
+    monkeypatch.setattr(cfg.approval, "ttl_s", 0)
+    run_id, llm, approval = await paused(runner, [incident_call(), final("No incident: the approval expired.")])
+    monkeypatch.setattr(runner, "_client", lambda mode: llm)  # the spawned continue_run uses the scripted LLM
+    assert await runner.sweep() == 1
+    row = await runner.store.get_approval(approval["id"])
+    assert (row["status"], row["decided_by"], row["reason"]) == ("expired", "system", "approval expired")
+    await wait_for_status(runner, run_id, "completed")
+    assert await runner.store.list_incidents() == []
+    envelope = tool_results(await runner.get_state(run_id))[0]
+    assert envelope["error"] == {
+        "type": "rejected",
+        "message": "create_incident was rejected: approval expired",
+        "retryable": False,
+    }
+    expired = [e for e in await events(runner, run_id) if e["kind"] in ("approval", "log")]
+    assert [(e["kind"], e["status"], e["attention"]) for e in expired[-2:]] == [
+        ("approval", "expired", "info"),
+        ("log", None, None),
+    ]
+    assert expired[-1]["data"] == {"actor": "system", "action": "expire_approval", "entity_id": approval["id"]}
+    assert await runner.sweep() == 0  # nothing left to expire
+
+
+async def test_cancel_closes_pending_approval(runner, monkeypatch):
+    monkeypatch.setattr(cfg.approval, "ttl_s", 0)
+    run_id, llm, approval = await paused(runner, [incident_call(), final("done")])
+    assert await runner.cancel(run_id, actor="anonymous") == {"run_id": run_id, "status": "cancelled"}
+    assert (await runner.store.get_run(run_id))["status"] == "cancelled"
+    row = await runner.store.get_approval(approval["id"])
+    assert (row["status"], row["reason"], row["decided_by"]) == ("cancelled", "run cancelled", "anonymous")
+    with pytest.raises(Conflict):
+        await runner.decide(run_id, approval["id"], decision="approve", actor="a")
+    assert await runner.sweep() == 0  # the sweep does not resume a cancelled run
+    assert await runner.continue_run(run_id, llm_client=llm) == "cancelled"
+    assert await runner.store.list_incidents() == []
+    done = await events(runner, run_id, "done")
+    assert [(e["status"], e["attention"]) for e in done] == [("cancelled", "info")]

@@ -61,6 +61,14 @@ Found in the M3 T2 review (2026-09-28), carry into T3/T5:
 - `_internal_error` emits its `error` event before the conditional `finish_run`: when a cancel won, that event lands after the cancel's `done`.
 - Multi-interrupt crash probe that paid off (passed): two approvals, decide c0, patch `pause_run` to raise, reopen `Runner.open` on the same file, `continue_run` re-pauses at c1, decide, reopen again, resume: both incidents, c0's edited args kept (LangGraph keeps earlier resume values in the checkpoint by index). Put probe tests in `backend/tests/` temporarily (fixtures), delete after.
 
+Found in the M3 T3 review (2026-09-28), carry into T4/T5/T6:
+
+- Proven (probe passed): cancelling a spawned segment mid-tool cancels the tool too (LangGraph leaves no orphan task); no event lands after cancel's `done`. Probe script: Runner.open on a temp file, hanging tool via `registry.TOOLS[...] = replace(tool, run=hang)`, spawn, cancel, release, sleep, list events. Re-run it if the loop or gateway gains new tasks.
+- No-event-after-done rests on: every spawned entry (`run_segment`, `continue_run`) reads the row first, and cancel snapshots `_tasks` right after `cancel_run` commits. Any new spawned fn that emits before reading the row breaks it.
+- Per-run lock waits are unbounded: the sweep (stale `expired_approvals` list) or a racing `decide` can wait behind a whole segment (max_run_seconds plus online evaluation). Rare; flagged MINOR.
+- `tracer.emit` inserts, then publishes: a segment cancelled between the two leaves a stored event that live subscribers never get (SSE gap). Matters for T5 only.
+- T4: `start` after a racing cancel makes `run_segment` raise ValueError, logged as "background segment failed".
+
 **Why:** the tester runs the listed tests; these gaps pass them.
 **How to apply:** on every review touching logging, SQL or the tracer, run the probes above in the scratchpad. See also [[spec-adr-config-drift-hotspots]].
 

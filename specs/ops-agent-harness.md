@@ -80,7 +80,7 @@ Run statuses ([0004](../docs/adr/0004-state-and-database-sqlite.md)):
 running ──► awaiting_approval ──decision──► running
 running ──► completed | failed | limit_exceeded | timed_out | cancelled      (final)
 running ──(process restart)──► interrupted ──resume──► running
-awaiting_approval | interrupted ──cancel──► cancelled
+running | awaiting_approval | interrupted ──cancel──► cancelled
 ```
 
 A run that ends `failed`, `limit_exceeded` or `timed_out` stores an `error` code: `llm_unavailable`, `malformed_reply`, `max_steps`, `max_tool_calls`, `recursion_limit`, `max_run_seconds` or `internal_error` ([docs/DESIGN.md](../docs/DESIGN.md#3-database-design)).
@@ -88,7 +88,7 @@ A run that ends `failed`, `limit_exceeded` or `timed_out` stores an `error` code
 A run executes in **segments**: from start (or resume, or a decision) until it finishes or pauses. Each segment runs as a background task with a per-run lock, so two decisions or resumes never run the same run at once.
 
 - Only the API process runs startup recovery (`running` → `interrupted`). The CLI never does, because it may share the database with a running API.
-- Cancel sets the run to `cancelled` and, in the same transaction, sets its `pending` approvals to `cancelled`. Resume and decisions on a run in a final status return 409.
+- Cancel sets the run to `cancelled` and, in the same transaction, sets its `pending` approvals to `cancelled`. A running segment is stopped first; the run then gets its one `done` event. Resume and decisions on a run in a final status return 409.
 
 ### Agent loop
 

@@ -185,3 +185,16 @@ async def live_judge():
 def no_real_judge(monkeypatch):
     """No test reaches a real judge: create_run then stores evaluate=false. Online tests patch in their own judge."""
     monkeypatch.setattr(metrics, "get_judge", lambda: FakeJudge(reachable=False))
+
+
+# --- M3 T3: background segments --------------------------------------------------------------
+
+
+async def wait_for_status(runner, run_id, *statuses, within_s=5.0) -> dict:
+    """Poll the run row until its status is one of `statuses`; fail the test after `within_s`."""
+    for _ in range(int(within_s / 0.02)):
+        run = await runner.store.get_run(run_id)
+        if run["status"] in statuses:
+            return run
+        await asyncio.sleep(0.02)
+    pytest.fail(f"run {run_id} is {run['status']}, not {statuses}, after {within_s} s")
