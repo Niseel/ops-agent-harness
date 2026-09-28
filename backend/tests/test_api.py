@@ -2,12 +2,18 @@ import asyncio
 import json
 from types import SimpleNamespace
 
+import fastapi.routing
 import httpx2
 import pytest
-from conftest import wait_for_status
+from conftest import FakeEmbedder, FakeJudge, wait_for_status
 
-from app.api import get_runner
-from app.config import settings
+from app.api import eval as eval_api
+from app.api import get_runner, runs
+from app.clock import now_iso
+from app.config import cfg, settings
+from app.eval import golden, metrics
+from app.eval.golden import MODES, load_golden
+from app.kb import qdrant
 from app.llm import fake
 from app.llm.openai_compat import ToolCall
 from app.main import app
@@ -510,3 +516,333 @@ async def test_usage_survives_null_token_counts(api, runner):
     await wait_for_status(runner, run_id, "completed")
     await runner.tracer.emit(run_id, "llm", data={"prompt_tokens": None, "completion_tokens": None})
     assert (await api.get(f"/api/runs/{run_id}")).json()["usage"] == {"prompt_tokens": 0, "completion_tokens": 0}
+
+
+# --- T5: live events, evaluation and health ------------------------------------------------
+
+
+def parse_sse(text: str) -> list[dict]:
+    """One dict per message: `id`, `event`, `data` (JSON) and `comment` (a `:` line)."""
+    messages = []
+    for block in text.replace("\r\n", "\n").split("\n\n"):
+        message = {}
+        for line in block.splitlines():
+            field, _, value = line.partition(":")
+            value = value.removeprefix(" ")
+            if field == "":
+                message["comment"] = value
+            elif field == "data":
+                message["data"] = json.loads(value)
+            elif field in ("id", "event"):
+                message[field] = value
+        if message:
+            messages.append(message)
+    return messages
+
+
+async def wait_subscribed(runner, run_id) -> None:
+    for _ in range(250):
+        if runner.tracer._subscribers.get(run_id):
+            return
+        await asyncio.sleep(0.02)
+    pytest.fail("the event stream never subscribed")
+
+
+async def open_stream(api, runner, run_id, **headers) -> asyncio.Task:
+    """ASGITransport returns the response only when the stream ends, so the request runs as a task."""
+    task = asyncio.create_task(api.get(f"/api/runs/{run_id}/events", headers=headers))
+    await wait_subscribed(runner, run_id)
+    return task
+
+
+async def ended(task: asyncio.Task) -> httpx2.Response:
+    async with asyncio.timeout(5):
+        return await task
+
+
+async def audits(runner, action) -> list[dict]:
+    rows = await runner.store._all("SELECT data_json FROM events WHERE run_id IS NULL")
+    return [data for row in rows if (data := json.loads(row["data_json"]))["action"] == action]
+
+
+async def test_sse_replays_then_streams(api, runner, search):
+    run_id, approval = await paused_run(api, runner)
+    stream = await open_stream(api, runner, run_id)
+    await api.post(decide_url(run_id, approval["id"]), json={"decision": "approve"})  # the rest comes live
+    response = await ended(stream)
+    assert response.status_code == 200 and response.headers["content-type"].startswith("text/event-stream")
+    messages = [m for m in parse_sse(response.text) if "data" in m]
+    trace = (await api.get(f"/api/runs/{run_id}/trace")).json()["events"]
+    assert [m["data"] for m in messages] == trace  # the same dicts as the trace, `done` last
+    assert [m["id"] for m in messages] == [str(e["seq"]) for e in trace]
+    assert all("event" not in m for m in messages)  # no event name: EventSource.onmessage gets them all
+    kinds = [e["kind"] for e in trace]
+    assert "approval" in kinds and kinds[-1] == "done"
+
+
+async def test_sse_resumes_after_last_event_id(api, runner, search):
+    run_id = await create(api, "Why is payments-api slow?")
+    await wait_for_status(runner, run_id, "completed")
+    events = (await api.get(f"/api/runs/{run_id}/trace")).json()["events"]
+    url = f"/api/runs/{run_id}/events"
+    middle = events[2]["seq"]
+    response = await api.get(url, headers={"Last-Event-ID": str(middle)})
+    assert [int(m["id"]) for m in parse_sse(response.text)] == [e["seq"] for e in events if e["seq"] > middle]
+    at_done = await api.get(url, headers={"Last-Event-ID": str(events[-1]["seq"])})
+    assert at_done.status_code == 200 and parse_sse(at_done.text) == []  # the client already has `done`
+    for bad in ("abc", "-1", str(2**63)):  # beyond SQLite's integer range: 422, not a broken stream
+        assert (await api.get(url, headers={"Last-Event-ID": bad})).status_code == 422
+
+
+async def test_sse_closes_after_done(api, runner, search, monkeypatch):
+    monkeypatch.setattr(metrics, "get_judge", lambda: FakeJudge())
+    run_id = await create(api, "Why is payments-api slow?", options={"evaluate": True})
+    await wait_for_status(runner, run_id, "completed")
+    for _ in range(250):  # online evaluation writes its events after `done`
+        kinds = [e["kind"] for e in (await api.get(f"/api/runs/{run_id}/trace")).json()["events"]]
+        if "eval" in kinds:
+            break
+        await asyncio.sleep(0.02)
+    assert kinds.index("eval") > kinds.index("done")
+    streamed = [m["data"]["kind"] for m in parse_sse((await api.get(f"/api/runs/{run_id}/events")).text)]
+    assert streamed[-1] == "done" and "eval" not in streamed
+
+
+async def test_sse_sends_keep_alive(api, runner, search, monkeypatch):
+    monkeypatch.setattr(fastapi.routing, "_PING_INTERVAL", 0.05)
+    run_id, approval = await paused_run(api, runner)
+    stream = await open_stream(api, runner, run_id)
+    await asyncio.sleep(0.3)  # the paused run keeps its stream open
+    await api.post(decide_url(run_id, approval["id"]), json={"decision": "approve"})
+    messages = parse_sse((await ended(stream)).text)
+    assert {"comment": "ping"} in messages and messages[-1]["data"]["kind"] == "done"
+
+
+async def test_sse_unknown_run_returns_404(api):
+    response = await api.get("/api/runs/nope/events")
+    assert response.status_code == 404 and response.json() == {"detail": "run nope not found"}
+
+
+async def test_sse_ends_on_final_row_without_done(api, runner, search, monkeypatch):
+    # A crash between the run row's final write and the `done` event: the stream must not wait forever.
+    monkeypatch.setattr(runs, "GRACE_S", 0.05)  # how long it waits for a `done` that never comes
+    crashed = await runner.create_run("Check payments-api")
+    await runner.store.update_run(crashed["id"], status="failed")
+    response = await ended(asyncio.create_task(api.get(f"/api/runs/{crashed['id']}/events")))
+    assert response.status_code == 200 and parse_sse(response.text) == []
+    # The same while the stream is open: noticed when the queue has been idle.
+    monkeypatch.setattr(runs, "IDLE_S", 0.05)
+    run_id, _ = await paused_run(api, runner)
+    stream = await open_stream(api, runner, run_id)
+    await runner.store.update_run(run_id, status="failed")
+    kinds = [m["data"]["kind"] for m in parse_sse((await ended(stream)).text) if "data" in m]
+    assert "done" not in kinds and kinds[-1] == "approval"
+
+
+async def test_sse_opened_while_a_cancel_finishes_gets_done(api, runner, search, monkeypatch):
+    # A cancel writes the final row first; its audit event and `done` come after the segment stops (reviewer T5).
+    run_id, _ = await paused_run(api, runner)
+    real = runner.get_state
+
+    async def slow(rid):
+        await asyncio.sleep(0.3)  # stands in for the segment teardown and the lock wait
+        return await real(rid)
+
+    monkeypatch.setattr(runner, "get_state", slow)
+    cancel = asyncio.create_task(api.post(f"/api/runs/{run_id}/cancel"))
+    await wait_for_status(runner, run_id, "cancelled")
+    response = await ended(asyncio.create_task(api.get(f"/api/runs/{run_id}/events")))
+    assert (await cancel).status_code == 200
+    kinds = [m["data"]["kind"] for m in parse_sse(response.text) if "data" in m]
+    assert kinds[-2:] == ["log", "done"]
+
+
+async def test_sse_sends_stored_event_that_was_never_published(api, runner, search):
+    run_id, approval = await paused_run(api, runner)
+    stream = await open_stream(api, runner, run_id)
+    # A segment cancelled between the tracer's insert and its publish leaves an event no subscriber got.
+    seq = await runner.store.insert_event(
+        {"run_id": run_id, "t_ms": 1, "kind": "log", "msg": "stored only", "created_at": now_iso()}
+    )
+    await api.post(decide_url(run_id, approval["id"]), json={"decision": "approve"})
+    messages = parse_sse((await ended(stream)).text)
+    assert str(seq) in [m["id"] for m in messages]
+    ids = [int(m["id"]) for m in messages if "id" in m]
+    assert ids == sorted(set(ids)) and messages[-1]["data"]["kind"] == "done"
+
+
+async def test_sse_stays_open_on_interrupted_run(api, runner, monkeypatch):
+    monkeypatch.setattr(runs, "IDLE_S", 0.05)
+    # No live segment: the row is set directly, as `recover()` would leave it after a crash mid-run.
+    run = await runner.create_run("Check payments-api")
+    await runner.store.update_run(run["id"], status="interrupted")
+    stream = await open_stream(api, runner, run["id"])
+    await asyncio.sleep(0.2)  # several idle windows; `interrupted` is not final, so the stream stays open
+    assert not stream.done()
+    stream.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await stream
+
+
+async def test_eval_endpoint_streams_report(api, runner, kb, monkeypatch):
+    monkeypatch.setattr(metrics, "get_judge", lambda: FakeJudge())
+    response = await api.post("/api/eval/kb", json={"modes": ["sparse", "hybrid", "sparse"]})
+    assert response.status_code == 200 and response.headers["content-type"].startswith("text/event-stream")
+    messages = parse_sse(response.text)
+    total = 2 * len(load_golden())  # duplicates dropped
+    progress = [m["data"] for m in messages if m.get("event") == "progress"]
+    assert progress == [{"done": done, "total": total} for done in range(1, total + 1)]
+    assert messages[-1]["event"] == "report"
+    report = messages[-1]["data"]
+    assert report["config"]["modes"] == ["sparse", "hybrid"]
+    assert report["summary"]["hybrid"]["context_precision"] == 0.9
+    latest = (await api.get("/api/eval/kb/latest")).json()
+    assert (latest["id"], latest["summary"]) == (report["id"], report["summary"])
+
+
+async def test_eval_start_is_audited(api, runner, kb, monkeypatch):
+    monkeypatch.setattr(metrics, "get_judge", lambda: FakeJudge(reachable=False))
+    response = await api.post("/api/eval/kb")  # no body: every mode
+    assert parse_sse(response.text)[-1]["data"]["config"]["modes"] == list(MODES)
+    [audit] = await audits(runner, "start_eval")
+    assert audit == {"actor": "anonymous", "action": "start_eval", "entity_id": cfg.eval.golden_set}
+
+
+async def test_eval_without_kb_returns_503(api, runner):
+    response = await api.post("/api/eval/kb", json={"modes": ["hybrid"]})
+    assert response.status_code == 503 and response.json() == {"detail": "knowledge base unavailable"}
+    assert await audits(runner, "start_eval") == []
+    assert await runner.store.latest_eval_report() is None
+
+
+async def test_latest_report_404_when_none(api):
+    response = await api.get("/api/eval/kb/latest")
+    assert response.status_code == 404 and response.json() == {"detail": "no evaluation report yet"}
+
+
+@pytest.mark.parametrize("body", [{"modes": ["fuzzy"]}, {"modes": []}, {"modes": "hybrid"}, {"extra": 1}])
+async def test_eval_body_rejects_unknown_mode(api, runner, kb, body):
+    assert (await api.post("/api/eval/kb", json=body)).status_code == 422
+    assert await audits(runner, "start_eval") == []
+
+
+async def test_eval_disconnect_stops_without_report(runner, kb, monkeypatch):
+    class GatedJudge(FakeJudge):
+        """Scores the first question, then waits forever on the second."""
+
+        def __init__(self) -> None:
+            super().__init__()
+            self.waiting, self.cancelled = asyncio.Event(), False
+
+        async def context_precision(self, question, reference, contexts):
+            if self.calls:
+                self.waiting.set()
+                try:
+                    await asyncio.Event().wait()
+                except asyncio.CancelledError:
+                    self.cancelled = True
+                    raise
+            return await super().context_precision(question, reference, contexts)
+
+    judge = GatedJudge()
+    monkeypatch.setattr(metrics, "get_judge", lambda: judge)
+    # The route's generator, driven directly: ASGITransport cannot drop a connection mid-stream.
+    stream = eval_api.eval_kb(kb=kb, runner=runner, body=None)
+    first = await anext(stream)
+    assert first.event == "progress" and first.data["done"] == 1
+    await judge.waiting.wait()
+    await stream.aclose()  # what FastAPI does when the client leaves
+    for _ in range(50):
+        if judge.cancelled:
+            break
+        await asyncio.sleep(0.01)
+    assert judge.cancelled and await runner.store.latest_eval_report() is None
+
+
+async def test_eval_job_error_sends_error_event(api, runner, kb, monkeypatch):
+    async def boom(*args, **kwargs):
+        raise RuntimeError("golden set exploded")
+
+    monkeypatch.setattr(golden, "run_golden", boom)
+    response = await api.post("/api/eval/kb", json={"modes": ["hybrid"]})
+    assert response.status_code == 200
+    messages = parse_sse(response.text)
+    assert messages[-1]["event"] == "error" and messages[-1]["data"] == {"detail": "evaluation failed"}
+    assert "report" not in {m.get("event") for m in messages}
+    assert await runner.store.latest_eval_report() is None
+
+
+async def test_eval_report_masks_secrets(api, runner, kb, monkeypatch):
+    # The stream skips MaskedJSONResponse (eval.py's own note); this proves its own mask() call works.
+    monkeypatch.setattr(runner.tracer, "secrets", ["leak-me"])
+
+    async def fake_run(kb, judge, store, *, modes, progress=None, golden=None):
+        report = {
+            "id": "r1",
+            "created_at": now_iso(),
+            "models": {},
+            "config": {},
+            "summary": {},
+            "rows": [],
+            "note": "leak-me is secret",
+        }
+        await store.insert_eval_report(report)
+        if progress:
+            await progress(1, 1)
+        return report
+
+    monkeypatch.setattr(golden, "run_golden", fake_run)
+    response = await api.post("/api/eval/kb", json={"modes": ["hybrid"]})
+    assert "leak-me" not in response.text
+    messages = parse_sse(response.text)
+    assert messages[-1]["data"]["note"] == "*** is secret"
+    stored = await runner.store.latest_eval_report()
+    assert stored["id"] == "r1"  # the report is stored as returned; only the stream response is masked
+
+
+async def test_health_reports_kb_mode(api, runner, kb, monkeypatch):
+    body = (await api.get("/api/health")).json()
+    assert body == {
+        "status": "ok",
+        "llm_default": settings.llm_default,
+        "db": {"ok": True},
+        "llm": {"model": settings.llm_model, "reachable": False},  # no_real_llm
+        "embeddings": {"model": "fake-embed", "reachable": True},
+        "qdrant": {"reachable": True},
+        "judge": {"model": "fake-judge", "reachable": False},  # no_real_judge
+        "kb": {"mode": "hybrid"},
+    }
+    monkeypatch.setattr(kb, "embedder", FakeEmbedder(fail=True))
+    body = (await api.get("/api/health")).json()
+    assert body["kb"] == {"mode": "sparse_only"} and body["embeddings"]["reachable"] is False
+
+    def no_kb():
+        raise RuntimeError("qdrant is down")
+
+    monkeypatch.setattr(qdrant, "get_kb", no_kb)
+    body = (await api.get("/api/health")).json()
+    assert body["kb"] == {"mode": "unavailable"} and body["qdrant"] == {"reachable": False}
+    assert body["embeddings"] == {"model": settings.embed_model, "reachable": False}
+    assert body["status"] == "ok"  # only the database makes it degraded
+
+
+async def test_health_degraded_and_probes_capped(api, runner, monkeypatch):
+    async def down() -> bool:
+        return False
+
+    async def hangs() -> bool:
+        await asyncio.sleep(30)
+        return True
+
+    monkeypatch.setattr(runner.store, "ping", down)
+    monkeypatch.setattr(runner, "llm_reachable", hangs)
+    async with asyncio.timeout(4):  # each probe waits at most 2 s, and they run together
+        response = await api.get("/api/health")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "degraded" and body["db"] == {"ok": False} and body["llm"]["reachable"] is False
+
+
+async def test_health_body_has_no_secrets(api, runner, monkeypatch):
+    monkeypatch.setattr(settings, "llm_api_key", "sk-health-secret-1")
+    assert "sk-health-secret-1" not in (await api.get("/api/health")).text

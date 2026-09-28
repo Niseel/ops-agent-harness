@@ -398,6 +398,11 @@ class Store:
             events.append(event)
         return events
 
+    async def done_seq(self, run_id: str) -> int | None:
+        """The seq of the run's `done` event, or None before it."""
+        row = await self._one("SELECT seq FROM events WHERE run_id = ? AND kind = 'done'", (run_id,))
+        return None if row is None else row["seq"]
+
     # --- incidents (the mock external system) ----------------------------------
 
     async def create_incident(

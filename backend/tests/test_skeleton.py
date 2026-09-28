@@ -11,7 +11,8 @@ from app.main import app
 
 
 def test_health():
-    assert TestClient(app).get("/api/health").json()["status"] == "ok"
+    with TestClient(app) as client:  # the lifespan opens the runner that health reads
+        assert client.get("/api/health").json()["status"] == "ok"
 
 
 def test_config_yaml_loads_every_tool():

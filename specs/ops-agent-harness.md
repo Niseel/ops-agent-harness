@@ -282,6 +282,9 @@ All routes are under `/api`, return JSON, and follow [the API standard](../.clau
 - Decisions: `reason` (1–500 characters) is required for `reject`; `args` (an object) is required for `edit` and refused with the other decisions. With `APPROVER_TOKEN` set, the token check comes first.
 - `resume` answers 202 and `cancel` 200, both with `{run_id, status}`. `GET /api/approvals` lists the oldest first.
 - An unexpected error answers 500 `{"detail": "internal error"}`. Configured secret values are masked in every response.
+- `/events`: each message has `id: <seq>` and `data: <event JSON>`, with no event name. The stream ends after the `done` event, or at once when `Last-Event-ID` is at or past it, or when the run row has been final for 5 s and no `done` came. Keep-alive is a `: ping` comment. Nothing is sent after `done`: online evaluation events are in `/trace` and the run detail.
+- `POST /api/eval/kb` sends `event: progress` with `{done, total}`, then `event: report` with the report (`event: error` if it fails). Duplicate modes are dropped. A client that disconnects stops the evaluation, and no report is stored.
+- `/api/health` answers `{status, llm_default, db: {ok}, llm: {model, reachable}, embeddings: {model, reachable}, qdrant: {reachable}, judge: {model, reachable}, kb: {mode}}`; `status` is `degraded` only when the database does not answer; the probes run together and each waits at most 2 s.
 
 Every state-changing call (create run, decide, resume, cancel, start evaluation) emits an event with actor (`current_user()`), action, entity id and time.
 

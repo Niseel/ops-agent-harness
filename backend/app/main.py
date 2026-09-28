@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app import log
-from app.api import MaskedJSONResponse, meta, runs
+from app.api import MaskedJSONResponse, eval, meta, runs
 from app.config import cfg, settings
 from app.harness.runner import Conflict, NotFound, Runner
 from app.kb import qdrant
@@ -79,4 +79,5 @@ async def internal_error(request: Request, exc: Exception) -> MaskedJSONResponse
 
 
 app.include_router(runs.router)
+app.include_router(eval.router)
 app.include_router(meta.router)

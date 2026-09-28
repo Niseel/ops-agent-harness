@@ -14,7 +14,7 @@ Prerequisites: [uv](https://docs.astral.sh/uv/), Docker.
 
 ```bash
 docker compose up -d qdrant
-cd backend && uv sync && uv run uvicorn app.main:app --reload --port 8000
+cd backend && uv sync && uv run uvicorn app.main:app --reload --port 8000 --timeout-graceful-shutdown 5
 ```
 
 ```bash

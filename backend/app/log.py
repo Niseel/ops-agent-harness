@@ -70,3 +70,5 @@ def setup(level: str, fmt: str, secrets: list[str]) -> None:
         server_log = logging.getLogger(name)
         server_log.handlers.clear()
         server_log.propagate = True
+    # The OpenAI SDK's client logs one INFO line per request; health probes and runs would flood the log.
+    logging.getLogger("httpx").setLevel(logging.WARNING)

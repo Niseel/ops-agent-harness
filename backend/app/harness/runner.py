@@ -378,6 +378,10 @@ class Runner:
         """The run's last checkpoint (empty before the first step)."""
         return (await self.graph.aget_state({"configurable": {"thread_id": run_id}})).values
 
+    async def llm_reachable(self) -> bool:
+        """Health: does the OpenAI-compatible endpoint answer? Uses the runs' one client."""
+        return await self._client("openai").reachable()
+
     def _client(self, mode: str):
         if mode == "fake":
             return FakePlanner()

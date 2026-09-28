@@ -1,20 +1,27 @@
-"""Runs, approvals, resume and cancel (spec: API). The rules live in the runner; routes map them to HTTP."""
+"""Runs, approvals, resume, cancel and live events (spec: API). The rules live in the runner; routes map them
+to HTTP."""
 
+import asyncio
+from collections.abc import AsyncIterator
 from functools import partial
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from fastapi.sse import EventSourceResponse, ServerSentEvent
 from pydantic import Field, ValidationError, model_validator
 
 from app.api import get_runner
 from app.auth import current_user, require_approver
 from app.config import Strict
 from app.harness.runner import NotFound, Runner
+from app.harness.state import FINAL_STATUSES
 from app.harness.tool_gateway import describe
 
 router = APIRouter(prefix="/api", tags=["runs"])
 RunnerDep = Annotated[Runner, Depends(get_runner)]
 APPROVAL_STATUSES = Literal["pending", "approved", "rejected", "edited", "expired", "cancelled"]
+IDLE_S = 15.0  # a quiet stream checks the run row this often (FastAPI's keep-alive interval)
+GRACE_S = 5.0  # how long a stream waits for `done` once the run row is final
 
 
 class CreateRun(Strict):
@@ -74,6 +81,56 @@ async def get_trace(run_id: str, runner: RunnerDep) -> dict:
     if run is None:
         raise NotFound(f"run {run_id} not found")
     return {"run_id": run_id, "status": run["status"], "events": await runner.store.list_events(run_id)}
+
+
+async def existing_run(run_id: str, runner: RunnerDep) -> dict:
+    run = await runner.store.get_run(run_id)
+    if run is None:
+        raise NotFound(f"run {run_id} not found")
+    return run
+
+
+@router.get("/runs/{run_id}/events", response_class=EventSourceResponse)
+async def run_events(
+    run: Annotated[dict, Depends(existing_run)],
+    runner: RunnerDep,
+    last_event_id: Annotated[int | None, Header(ge=0, le=2**63 - 1)] = None,  # SQLite's integer range
+) -> AsyncIterator[ServerSentEvent]:
+    """Stored events after Last-Event-ID, then live ones, up to `done`. Nothing after `done`."""
+    run_id, sent = run["id"], last_event_id or 0
+    # Subscribe before the first read, so no event falls between the replay and the live part.
+    wake = runner.tracer.subscribe(run_id)
+    try:
+        done = await runner.store.done_seq(run_id)
+        if done is not None and done <= sent:
+            return  # the client already has `done`
+        # The store is the source: a live event only wakes the loop. So an event stored but never published
+        # (a segment cancelled between the two) is sent too. ponytail: one query per wake-up.
+        loop = asyncio.get_running_loop()
+        idle, last, deadline = True, False, None
+        while True:
+            for event in await runner.store.list_events(run_id, after_seq=sent):
+                yield ServerSentEvent(data=event, id=str(event["seq"]))
+                sent = event["seq"]
+                if event["kind"] == "done":
+                    return
+            if last:
+                return  # the run row is final and no `done` came: a crash between the two writes
+            if deadline is None and idle and (await runner.store.get_run(run_id))["status"] in FINAL_STATUSES:
+                # `done` follows the final row, but not at once: a cancel first stops the segment and writes an
+                # audit event. Wait for it up to GRACE_S.
+                deadline = loop.time() + GRACE_S
+            try:
+                async with asyncio.timeout_at(deadline if deadline is not None else loop.time() + IDLE_S):
+                    await wake.get()
+                idle = False
+            except TimeoutError:
+                idle = True
+                last = deadline is not None  # read once more, then end
+            while not wake.empty():
+                wake.get_nowait()
+    finally:
+        runner.tracer.unsubscribe(run_id, wake)
 
 
 @router.get("/approvals")

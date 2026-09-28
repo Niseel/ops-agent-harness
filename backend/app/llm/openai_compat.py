@@ -64,6 +64,14 @@ class OpenAICompatClient:
         )
         return to_reply(completion)
 
+    async def reachable(self) -> bool:
+        """True when the endpoint answers GET /models within 2 s (health)."""
+        try:
+            await self._sdk.with_options(timeout=2.0, max_retries=0).models.list()
+            return True
+        except Exception:
+            return False
+
 
 class OpenAICompatEmbedder:
     """Embeddings from any OpenAI-compatible endpoint (`EMBED_*`; an empty base URL or key reuses `LLM_*`)."""

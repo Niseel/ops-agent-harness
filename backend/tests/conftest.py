@@ -16,7 +16,7 @@ from app.harness.store import Store
 from app.harness.tracer import Tracer
 from app.kb import qdrant, sparse
 from app.kb.ingest import ingest
-from app.llm.openai_compat import OpenAICompatEmbedder
+from app.llm.openai_compat import OpenAICompatClient, OpenAICompatEmbedder
 from app.main import app
 
 SECRET = "sk-test-secret-123"
@@ -219,3 +219,16 @@ async def api(runner):
     async with httpx2.AsyncClient(transport=httpx2.ASGITransport(app=app), base_url="http://test") as client:
         yield client
     app.dependency_overrides.clear()
+
+
+# --- M3 T5: health ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def no_real_llm(monkeypatch):
+    """Health never probes a real chat endpoint in tests."""
+
+    async def unreachable(self) -> bool:
+        return False
+
+    monkeypatch.setattr(OpenAICompatClient, "reachable", unreachable)

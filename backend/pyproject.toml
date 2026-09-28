@@ -3,7 +3,7 @@ name = "ops-agent-harness"
 version = "0.1.0"
 requires-python = ">=3.12,<3.13"
 dependencies = [
-    "fastapi",
+    "fastapi>=0.135.0",
     "uvicorn[standard]",
     "pydantic-settings",
     "pyyaml",
