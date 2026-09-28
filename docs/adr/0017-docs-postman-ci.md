@@ -1,6 +1,6 @@
 # 0017. Docs in repo, Postman collection, CI
 
-Status: Accepted · Date: 2026-09-26 · `docs/PLAN.md` replaced by `plans/`, see [0018](0018-adopt-ai-sdlc-workflow.md)
+Status: Accepted · Date: 2026-09-26 · `docs/PLAN.md` replaced by `plans/`, see [0018](0018-adopt-ai-sdlc-workflow.md) · Refined in M5: pytest uses in-memory Qdrant ([0006](0006-vector-store-qdrant-no-rerank.md)); the Qdrant service container serves the end-to-end job
 
 ## Context
 

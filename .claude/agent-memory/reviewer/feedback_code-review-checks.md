@@ -151,3 +151,8 @@ Found in the M5 T2 review (2026-09-28), carry into T3/T4 CI jobs:
 
 - CI jobs cannot run locally; proof is `yaml.safe_load` plus the job's commands in a matching container. A `--platform linux/amd64` run under QEMU on Apple Silicon is 15-20x slower, so vitest 5 s timeouts there are not a signal; compare the slowest native test time instead.
 - Workflow style: first-party actions on moving major tags (`checkout@v7`, `setup-node@v7`), third-party pinned to a release (`setup-uv@v10.2.0`), no SHA pins, workflow-level `permissions: contents: read`, no `timeout-minutes` anywhere. Judge new jobs for consistency with this, not a rewrite.
+
+Found in the M5 T3 review (2026-09-28), carry into T4 (newman step, README eval commands) and any shell script:
+
+- Shell scripts that pass an API list as one argv value (`jq --argjson x "$body"`) break on Linux once the body passes 128 KB (MAX_ARG_STRLEN, per argument; macOS only caps the 1 MB total). `run.sh` passes all of `GET /api/incidents` (~330 B each, unpaginated), so a long-lived Linux or Docker DB with ~400 incidents fails every scenario with misleading FAILs (the `>` redirect truncates the out file first). Probe: `docker run --rm node:24-slim bash -c 'x=$(head -c 140000 /dev/zero | tr "\0" a); /bin/echo "$x"'`. Fix: feed large JSON through stdin or `--slurpfile <(printf %s "$body")`.
+- Probes that worked for `evals/run.sh`: scratch API on :8010 (`DB_PATH=<scratchpad> LLM_DEFAULT=fake uv run uvicorn ...`, background, `pkill -f` after), `BASE_URL=http://localhost:8010 /bin/bash evals/run.sh <scratch scenarios>` built with `jq` from the real files: decision left but no pause, pause with no decision, a 422 decision, missing file, no API. jq 1.7 `null | has("k")` is `false` (no error).

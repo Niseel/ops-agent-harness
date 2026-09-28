@@ -1,0 +1,8 @@
+{
+  "name": "step-limit",
+  "objective": "payments-api is returning 5xx errors, investigate.",
+  "llm": "fake",
+  "limits": {"max_steps": 2},
+  "decisions": [],
+  "expect": {"status": "limit_exceeded", "attempts": {"llm": 2}}
+}

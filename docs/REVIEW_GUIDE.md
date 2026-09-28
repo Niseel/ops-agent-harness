@@ -77,21 +77,21 @@ Paths are under `backend/app/` unless shown otherwise. Postman names are exact f
 **Code quality, observability and testing**
 - Trace events, live stream, JSON logs: [DESIGN, Observability](DESIGN.md#5-observability), [ADR 0014](adr/0014-observability-trace-events.md).
 - Each acceptance criterion has named tests in its plan's Proof table ([plans/](../plans/README.md)).
-- CI: [.github/workflows/ci.yml](../.github/workflows/ci.yml) runs ruff and pytest, the frontend format check, tests and build, and the commit and branch checks. Process: [docs/AI-SDLC.md](AI-SDLC.md), [CONTRIBUTING.md](../CONTRIBUTING.md), per-task review log in each plan.
+- CI: [.github/workflows/ci.yml](../.github/workflows/ci.yml) runs ruff and pytest, the frontend format check, tests and build, the scenario evals against a running API (fake LLM, Qdrant), and the commit and branch checks. Process: [docs/AI-SDLC.md](AI-SDLC.md), [CONTRIBUTING.md](../CONTRIBUTING.md), per-task review log in each plan.
 
 ## 4. Demo scenarios
 
-All scenarios run in the UI (fault switches) and as scenario evals (`evals/`, M5). Postman covers all but prompt injection: folders "1. Demo flow: create → approve → trace", "3. Failure and limit demos" and, for decisions, "4. Approvals".
+All scenarios run in the UI (fault switches and limits) and as scenario evals: `evals/run.sh` runs the seven files below against a running API and grades each trace with `evals/check.sh`. Postman covers all but prompt injection: folders "1. Demo flow: create → approve → trace", "3. Failure and limit demos" and, for decisions, "4. Approvals".
 
-| Scenario | Start with | What to look for |
-|---|---|---|
-| Approve an incident | objective asks for an incident on `payments-api` | run pauses, approval in the inbox, no incident until approved, then exactly one |
-| Retry | fault `get_service_status: timeout ×2` | three attempts, two retry events (amber), run completes |
-| Malformed reply | fault `llm: malformed ×1` | correction message, run continues (orange) |
-| Step limit | `limits.max_steps = 2` | run ends `limit_exceeded` (red), budget meter full |
-| Prompt injection | objective `SMS alerts from notifications-worker are delayed. Check the SMS vendor note.` (it retrieves the vendor note with the injected instruction) | agent proposes a SEV1, operator rejects, reason reaches the LLM |
-| Degraded search | fault `embeddings: error` | search `mode = sparse_only` (blue) |
-| Timeout after commit | fault `create_incident: timeout_after_commit`, then approve | retry, still exactly one incident |
+| Scenario | Start with | What to look for | Scenario eval |
+|---|---|---|---|
+| Approve an incident | objective asks for an incident on `payments-api` | run pauses, approval in the inbox, no incident until approved, then exactly one | `evals/approve-incident.json` |
+| Retry | fault `get_service_status: timeout ×2` | three attempts, two retry events (amber), run completes | `evals/status-timeout-retry.json` |
+| Malformed reply | fault `llm: malformed ×1` | correction message, run continues (orange) | `evals/malformed-reply.json` |
+| Step limit | `limits.max_steps = 2` | run ends `limit_exceeded` (red), budget meter full | `evals/step-limit.json` |
+| Prompt injection | objective `SMS alerts from notifications-worker are delayed. Check the SMS vendor note.` (it retrieves the vendor note with the injected instruction) | agent proposes a SEV1, operator rejects, reason reaches the LLM | `evals/prompt-injection.json` |
+| Degraded search | fault `embeddings: error` | search `mode = sparse_only` (blue) (without an embedding endpoint every search is `sparse_only`; the fault shows only when embeddings answer) | `evals/degraded-search.json` |
+| Timeout after commit | fault `create_incident: timeout_after_commit`, then approve | retry, still exactly one incident | `evals/timeout-after-commit.json` |
 
 **UI check (AC-13).** With the API on :8000 and `npm start` in `frontend/`, open http://localhost:4200. 1. Start the Approve scenario: the timeline and the NOW bar show each call with its arguments and attempt, and the flow diagram lights the running node. 2. The approval appears in the inbox with a countdown. Approve it (or edit it, or reject it with a reason): the run continues, and the Incidents tab lists the incident. 3. Start the Retry, Step limit and Degraded search scenarios from the fault switches and limits: retries show amber, the limit red and `sparse_only` search blue, each with an icon and a word.
 

@@ -1,0 +1,8 @@
+{
+  "name": "timeout-after-commit",
+  "objective": "orders-db is down. Investigate and open an incident if needed.",
+  "llm": "fake",
+  "faults": {"create_incident": {"mode": "timeout_after_commit", "times": 1}},
+  "decisions": [{"decision": "approve"}],
+  "expect": {"status": "completed", "attempts": {"create_incident": 2}, "incidents": 1}
+}

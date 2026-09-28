@@ -57,3 +57,29 @@ jobs:
       - run: npx prettier --check src
       - run: npm test -- --watch=false
       - run: npm run build
+
+  e2e:
+    name: End-to-end checks
+    runs-on: ubuntu-latest
+    services:
+      qdrant:
+        image: qdrant/qdrant:v1.19.1
+        ports:
+          - 6333:6333
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.2.0   # no moving major tag; pin the release
+      - run: uv sync --locked
+        working-directory: backend
+      - name: Wait for Qdrant
+        run: curl -sf --retry 30 --retry-delay 1 --retry-all-errors http://localhost:6333/readyz
+      - name: Start the API (fake LLM, no embedding endpoint)
+        working-directory: backend
+        run: |
+          uv run uvicorn app.main:app --port 8000 --timeout-graceful-shutdown 5 > "$RUNNER_TEMP/api.log" 2>&1 &
+          curl -sf --retry 60 --retry-delay 1 --retry-all-errors http://localhost:8000/api/health
+      - name: Scenario evals
+        run: evals/run.sh
+      - name: API log
+        if: failure()
+        run: cat "$RUNNER_TEMP/api.log"

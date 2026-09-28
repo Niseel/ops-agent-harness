@@ -1,6 +1,6 @@
 # 0018. Adopt the AI-SDLC workflow
 
-Status: Accepted · Date: 2026-09-27 · `/feature` adapted: the main agent codes, one commit per task, planner checks each milestone plan
+Status: Accepted · Date: 2026-09-27 · `/feature` adapted: the main agent codes, one commit per task, planner checks each milestone plan · Refined in M5: the saved trace also holds the run's incidents ([spec, Evaluation](../../specs/ops-agent-harness.md#evaluation))
 
 ## Context
 
