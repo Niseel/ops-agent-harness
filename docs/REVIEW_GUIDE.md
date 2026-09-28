@@ -77,7 +77,7 @@ Paths are under `backend/app/` unless shown otherwise. Postman names are exact f
 **Code quality, observability and testing**
 - Trace events, live stream, JSON logs: [DESIGN, Observability](DESIGN.md#5-observability), [ADR 0014](adr/0014-observability-trace-events.md).
 - Each acceptance criterion has named tests in its plan's Proof table ([plans/](../plans/README.md)).
-- CI: [.github/workflows/ci.yml](../.github/workflows/ci.yml) runs ruff, pytest and the commit and branch checks. Process: [docs/AI-SDLC.md](AI-SDLC.md), [CONTRIBUTING.md](../CONTRIBUTING.md), per-task review log in each plan.
+- CI: [.github/workflows/ci.yml](../.github/workflows/ci.yml) runs ruff and pytest, the frontend format check, tests and build, and the commit and branch checks. Process: [docs/AI-SDLC.md](AI-SDLC.md), [CONTRIBUTING.md](../CONTRIBUTING.md), per-task review log in each plan.
 
 ## 4. Demo scenarios
 

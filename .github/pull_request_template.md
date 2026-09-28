@@ -16,6 +16,7 @@
 
 - [ ] `cd backend && uv run pytest -q` passes
 - [ ] `cd backend && uv run ruff check . && uv run ruff format --check .` passes
+- [ ] `cd frontend && npm test -- --watch=false && npm run build && npx prettier --check src` passes
 - [ ] Docs updated where behaviour changed (DESIGN.md, ADRs, REVIEW_GUIDE.md, Postman collection)
 - [ ] No test weakened, skipped or deleted; no secrets committed
 

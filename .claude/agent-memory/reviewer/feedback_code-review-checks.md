@@ -146,3 +146,8 @@ Found in the M5 T1 review (2026-09-28), carry into T4 (README/DESIGN) and any Do
 - Host API and container share Qdrant's `ops_kb` collection. The container skips ingest only when `content_hash` (docs + EMBED_MODEL) matches; after a data/kb edit without a rebuild, or another EMBED_MODEL, it deletes the hybrid index and rebuilds BM25-only (its embeddings fail), and the running host API silently drops to `sparse_only` (`_has_dense` read per search). Self-heals on the next host start (BM25-only is never skipped).
 - `/api/health` `kb.mode` `sparse_only` in the container does not mean the index is BM25-only: health downgrades `hybrid` when embeddings are unreachable. Check the collection itself: `curl 127.0.0.1:6333/collections/ops_kb` (`vectors.dense`) and scroll one payload's `embed_model`.
 - Read-only container probes that worked: `docker compose exec -T app sh -c 'id; find / -xdev -writable ...; cat /proc/1/cmdline'`; traversal via `curl --path-as-is` with `..`, `%2e%2e`, `%2f` (StaticFiles: realpath + commonpath, `follow_symlink=False`).
+
+Found in the M5 T2 review (2026-09-28), carry into T3/T4 CI jobs:
+
+- CI jobs cannot run locally; proof is `yaml.safe_load` plus the job's commands in a matching container. A `--platform linux/amd64` run under QEMU on Apple Silicon is 15-20x slower, so vitest 5 s timeouts there are not a signal; compare the slowest native test time instead.
+- Workflow style: first-party actions on moving major tags (`checkout@v7`, `setup-node@v7`), third-party pinned to a release (`setup-uv@v10.2.0`), no SHA pins, workflow-level `permissions: contents: read`, no `timeout-minutes` anywhere. Judge new jobs for consistency with this, not a rewrite.
