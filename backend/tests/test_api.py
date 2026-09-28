@@ -352,6 +352,14 @@ async def test_resume_non_interrupted_returns_409(api, runner):
     assert (await api.post("/api/runs/nope/resume")).status_code == 404
 
 
+async def test_resume_answers_409_while_online_evaluation_holds_the_run(api, runner):
+    run_id = await create(api)
+    await wait_for_status(runner, run_id, "completed")
+    async with runner._locks[run_id]:  # as online evaluation does after `done`, for minutes with a slow judge
+        response = await asyncio.wait_for(api.post(f"/api/runs/{run_id}/resume"), timeout=2)
+    assert response.status_code == 409 and "not interrupted" in response.json()["detail"]
+
+
 async def test_unexpected_error_gives_json_500():
     async def list_runs(limit):
         raise RuntimeError("database exploded")
