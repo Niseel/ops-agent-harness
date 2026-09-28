@@ -26,9 +26,13 @@ cd backend && uv sync --locked            # install
 cd backend && uv run pytest -q            # tests
 cd backend && uv run ruff check .         # lint
 cd backend && uv run ruff format --check . # format (drop --check to fix)
+cd frontend && npm ci                     # install
+cd frontend && npm test -- --watch=false  # tests
+cd frontend && npm run build              # build and type check
+cd frontend && npx prettier --check src   # format (--write to fix)
 ```
 
-Frontend and eval commands are added by the milestone that introduces them.
+Eval commands are added by the milestone that introduces them.
 
 ### Rules
 - A milestone starts when the owner runs `/feature plans/mN-*.md`; follow that skill's phases.
