@@ -1,0 +1,322 @@
+# Plan: M6 UI upgrade   (from the owner's request of 2026-09-29; changes [specs/ops-agent-harness.md](../specs/ops-agent-harness.md))
+
+Status: approved (owner, gate 1, 2026-09-29). Branch: `feat/m6-ui-upgrade`. PR title: `feat: M6 UI upgrade`.
+
+The owner's request (translated from Vietnamese), the source of this milestone:
+1. The UI must fit in one screen. Scrolling down makes the flow hard to watch.
+2. The UI is monochrome. It does not make the key information and the workflow stand out.
+3. The fake LLM must wait 300–500 ms per reply, so a person can follow the run.
+4. The UI must show clearly, at every moment, when the LLM and when the harness is working, and on what: which tool it chose and what it does.
+5. The result (the run's final answer) must be shown more clearly.
+6. A "Help" button in the top-right corner starts a guided tour that walks through and highlights the basic use of the app.
+
+How: the Runs tab becomes a one-screen console with the Now panel and the flow above the timeline (T2); one colour per actor next to the attention colours (T3); the Now panel names the actor at work, inferred from the events the UI already gets (T4), and turns into a Result panel when the run ends (T5); a Help tour built on a native `<dialog>` (T6). The only backend change is the fake LLM's wait (T1). No API route, event or Postman change. The owner's answers from round 1 (2026-09-29: all four recommended defaults) are written into the rules and marked "(owner, round 1)".
+
+## Files that change
+- `backend/app/config.py`, `config.yaml` (edit, T1) - `llm.fake_delay_ms`, a checked `[min, max]` range in ms
+- `backend/app/llm/fake.py` (edit, T1) - `FakePlanner.complete` waits before it answers
+- `backend/tests/conftest.py` (edit, T1) - autouse fixture: no wait in tests
+- `backend/tests/test_llm.py`, `test_skeleton.py`, `test_lifecycle.py` (edit, T1) - the wait, the range check, cancel during the wait
+- `frontend/src/app/palette.spec.ts` (new, T3) - reads `styles.css` as text: every colour token reaches 4.5:1 in both themes
+- `frontend/src/styles.css` (edit; T2 layout, T3 colours, T4 actor badge, T5 result, T6 tour)
+- `frontend/src/app/runs-page.html`, `runs-page.ts` (edit; T2, T3, T4, T5) - panel placement, colours, Now panel, Result panel
+- `frontend/src/app/runs-page.spec.ts` (edit; T2, T3, T4, T5) - new tests only
+- `frontend/src/app/follow.ts`, `follow.spec.ts` (new, T2) - keep a list at its newest item
+- `frontend/src/app/flow.ts` (edit; T2 narrower placement, T3 roles), `flow-diagram.ts` (edit, T3), `flow-diagram.spec.ts` (edit; T2, T3)
+- `frontend/src/app/trace.ts`, `trace.spec.ts` (edit; T3 `roleOf`, `runStatusStyle`; T4 `activity`, `lastReply`)
+- `frontend/src/app/tour.ts`, `tour.spec.ts` (new, T6) - the guided tour
+- `frontend/src/app/app.ts` (edit; T2 `id="tabs"`, T6 Help button and tour), `app.spec.ts` (edit, T6)
+- `specs/ops-agent-harness.md` (edit; T1–T6: LLM note, UI section, AC-13)
+- `docs/DESIGN.md` (edit; T1 §7 and §8, T2 §8, T4 §5)
+- `docs/adr/0003-llm-openai-compatible-with-fake.md`, `docs/adr/0015-ui-run-console-not-chat.md`, `docs/adr/README.md` (edit; T1, T2, T3) - status notes
+- `docs/REVIEW_GUIDE.md` (edit; T1–T6) - R12 row, §4 UI check
+- `README.md` (edit, T6) - Try it: Help
+- `plans/README.md` (edit; M6 row now, `done` at wrap-up)
+
+## Order of work
+1. T1 → T2 → T3 → T4 → T5 → T6. One commit each; stop after each commit for review.
+2. T1 is backend only and may run in parallel with T2. T2–T6 all edit `styles.css` and the Runs page, so they go in order. T6 needs only T2's panel ids, but goes last: its steps describe the colours, the Now panel and the result.
+
+## Tasks
+| ID | Task | Files | Skills | Depends on | Parallel | Est. |
+|----|------|-------|--------|------------|----------|------|
+| T1 | Fake LLM waits `llm.fake_delay_ms` (300–500 ms) before each reply; range checked at startup; zero in tests; cancel works during the wait; evals and newman still pass (AC-13) | config.py, config.yaml, llm/fake.py, tests/conftest.py, tests/test_llm.py, tests/test_skeleton.py, tests/test_lifecycle.py, spec, DESIGN, ADR 0003, ADR README, REVIEW_GUIDE | ai-engineer | M5 | yes (with T2) | 0.75h |
+| T2 | One-screen Runs tab: grid at 1200×640 and up, panels scroll inside, Now and Flow above the timeline, console and detail below, every panel rendered with an empty text, `Follow` directive, narrower flow; stacked with a sticky Now panel below that size (AC-13) | styles.css, runs-page.html/.ts, runs-page.spec.ts, follow.ts, follow.spec.ts, flow.ts, flow-diagram.spec.ts, app.ts, spec, DESIGN, ADR 0015, ADR README, REVIEW_GUIDE | - | M5 | yes (with T1) | 1.25h |
+| T3 | Colours: role tokens (LLM, harness, tool, person) in light and dark, applied to the flow (with a legend), timeline, console, runs list, attention rows, approvals, meters; `roleOf`, `runStatusStyle`; contrast test (AC-13) | styles.css, flow.ts, flow-diagram.ts, flow-diagram.spec.ts, trace.ts, trace.spec.ts, runs-page.html/.ts, runs-page.spec.ts, palette.spec.ts, spec, ADR 0015, ADR README, REVIEW_GUIDE | - | T2 | no | 1h |
+| T4 | Now panel: who is working (LLM, harness, person) and on what, from `TraceStore.activity`; the LLM's last choice from `lastReply` (AC-13) | trace.ts, trace.spec.ts, runs-page.html/.ts, runs-page.spec.ts, styles.css, spec, DESIGN, REVIEW_GUIDE | ai-engineer | T3 | no | 1h |
+| T5 | Result panel: when the run ends the Now panel shows the status (colour, icon, word), the error in words, the final answer, the incident and the answer badges (AC-13) | runs-page.html/.ts, runs-page.spec.ts, styles.css, spec, REVIEW_GUIDE | - | T4 | no | 0.75h |
+| T6 | Help tour: Help button at the top right, 10 steps on a native `<dialog>`, highlight ring, keyboard and narrow screens, missing targets, focus back to Help (AC-13) | tour.ts, tour.spec.ts, app.ts, app.spec.ts, styles.css, README.md, spec, REVIEW_GUIDE | - | T5 | no | 1.25h |
+
+Total 6h. One task per point of the request: point 3 → T1, 1 → T2, 2 → T3, 4 → T4, 5 → T5, 6 → T6. The wait comes first, so every later UI check runs at a pace a person can follow.
+
+## Interfaces
+| Module (task) | Exposes | Used by |
+|---|---|---|
+| `config.py` (T1) | `LLM.fake_delay_ms: tuple[int, int]`, default `(0, 0)`; refused unless `0 <= min <= max` | `llm/fake.py`, `conftest.py` |
+| `llm/fake.py` (T1) | `FakePlanner.complete` awaits `sleep(random.uniform(min, max) / 1000)` first when `max > 0`; module-level `from asyncio import sleep` | the runner, tests |
+| `follow.ts` (T2) | `Follow`, attribute directive `[appFollow]` (input: a number that changes when items are added) | Runs page timeline and console |
+| `flow.ts` (T2, T3) | `FLOW` (narrower, T2); `Role = 'llm' \| 'harness' \| 'tool' \| 'person'` and `FlowNode.role` (T3) | `FlowDiagram`, `roleOf` |
+| `trace.ts` (T3) | `roleOf(event): Role`; `runStatusStyle(status): AttentionStyle \| null` | Runs page, console |
+| `trace.ts` (T4) | `TraceStore.activity` (computed `{actor: 'llm' \| 'harness' \| 'person' \| 'none', text}`), `TraceStore.lastReply` (computed `TraceEvent \| null`); types `Actor`, `Activity` | Now panel |
+| `runs-page.ts` (T5) | `ERROR_TEXT: Record<string, string>` | Result panel, tests |
+| `tour.ts` (T6) | `Tour` (method `start()`, output `closed`), `TOUR_STEPS`, `placement(rect, width, height)` | `App` |
+
+## Rules pinned by this plan
+Taken from the owner's request, the spec (UI, LLM, Events, AC-13, attention table), ADRs 0003, 0014–0016, DESIGN, the M4 and M5 plans and the code at `a13d146`, so the coder does not have to decide.
+
+**General**
+- No new npm or Python dependency. Native platform only: CSS grid, `dvh`, custom properties, `color-mix()`, `:has()`, `<dialog>` with `showModal()`, `<meter>` `low`/`high`/`optimum`, `prefers-color-scheme`, `prefers-reduced-motion`. No Popover API or CSS anchor positioning: the tour card has three places, computed in two lines.
+- No API route, event kind, event field, Postman or trace-fixture change, and no new "started" events (owner, round 1). The UI infers the actor from the events it already gets. `evals/check.sh` and the run detail keep counting `llm` and `tool` events as before.
+- M4 rules stay: state in signals only; untrusted text through interpolation only; all CSS in `src/styles.css`, no component styles; attention never colour alone (icon and word).
+- Every new use of colour comes with a word or an icon: the actor label, the status word, the tool name, the legend.
+- Motion: only the active actor's dot and the active flow node pulse. `prefers-reduced-motion: reduce` stops both, and the tour ring moves without a transition.
+- Copy below is the plan's default; change it at gate 1 if needed. Plain English, short sentences.
+
+**Fake LLM wait** (T1)
+- `config.py`: `class LLM` gains `fake_delay_ms: tuple[int, int] = (0, 0)`, with a validator that refuses a negative value or `min > max` (the app does not start, like an unknown key).
+- `config.yaml`, under `llm:`: `fake_delay_ms: [300, 500]   # fake LLM only: wait a random time in this range (ms) before each reply, so a person can follow a run; [0, 0] = no wait`.
+- `llm/fake.py`: `FakePlanner.complete` first reads `cfg.llm.fake_delay_ms` (at call time, so tests can patch it) and, when `max > 0`, awaits `sleep(random.uniform(min, max) / 1000)`. `sleep` is imported by name at module level (`from asyncio import sleep`), so a test patches `app.llm.fake.sleep` and never waits for real. `ScriptedLLM` never waits.
+- The wait sits inside `llm_gateway`'s `asyncio.timeout(cfg.llm.timeout_s)` and inside `latency_ms`: it behaves like a model's think time, and the timeline's LLM items show it. A faulted LLM attempt (`malformed`, `timeout`) never calls the fake, so it adds no wait. `asyncio.sleep` is cancellable, so a cancel during the wait ends the run `cancelled` at once with one `done`.
+- `conftest.py`: an autouse fixture `no_fake_delay` sets `cfg.llm.fake_delay_ms` to `(0, 0)`, like `zero_retry_delay`. The 523 backend tests keep their speed; only the tests below set another value.
+- Where the wait applies (owner, round 1): wherever the API or the CLI runs the fake LLM with `config.yaml`: the UI, Docker, the CI `e2e` job, `evals/run.sh` and newman. CI keeps the wait on. Measured need: the seven scenarios make about 23 fake LLM calls, so `evals/run.sh` takes about 10 s longer (about 25 s in all; the limit is 60 s per scenario); newman folder 1 polls 40 × 300 ms for the approval and needs about 1.5 s. No limit changes.
+- No environment variable: `.env.example` and DESIGN §7's table keep their keys.
+
+**One-screen layout** (T2)
+- Target (owner, round 1): every panel stays; a viewport of at least 1200×640 CSS pixels, designed and checked at 1280×720 and 1920×1080. Media query `(min-width: 1200px) and (min-height: 640px)`.
+- Base CSS (any size) is today's stacked layout (three columns above 900 px, one below; the page scrolls), plus: the Now panel is `position: sticky; top: 0` with a panel background, so who is working stays in view.
+- The one-screen block adds: `--header-h: 3rem` with the header at that height; `body { overflow: hidden }`; `main { height: calc(100dvh - var(--header-h)); padding: 8px 12px }`; each `main > section` fills `main`; the Evaluation and Incidents sections scroll inside, the Runs section does not (its panels do); `app-runs-page { display: block; height: 100% }`.
+- Runs grid: columns `minmax(13rem, 17%) minmax(0, 1fr) minmax(16rem, 21%)`; rows `minmax(0, 1fr) minmax(9rem, 25%)`; areas `'left center right' 'bottom bottom bottom'`; gap 8 px; every grid child `min-height: 0`.
+- Each column is a flex column. A panel keeps its heading in view; only its list or `pre` scrolls.
+  - Left: New run (natural height), Runs (fills the rest; `ul.runs` scrolls).
+  - Center: Now (natural height, at most 35% of the column, scrolls inside), Flow (natural height; the SVG at most 14rem tall), the run timeline (fills the rest; `ol.timeline` scrolls).
+  - Right: Approvals (natural height, at most 45%, scrolls), Budget (natural height), Attention (fills the rest; `ul.attention` scrolls).
+  - Bottom: Console (2fr) and Detail (1fr) side by side; `ol.console-lines` and the detail `pre` scroll. The console's `max-height: 320px` stays only in the stacked layout.
+- Every panel renders even with no run open, with its empty text, so the layout never jumps and the tour always finds its targets: Now "No run open. Start one on the left or pick one from the list."; Flow the unlit diagram; timeline "Start a run or pick one from the list." (as now); Console "No events for this filter." (as now); Detail "Select a step to see its data." (as now). The `@if (runId())` around the NOW bar, the flow and the console goes.
+- `follow.ts`: `Follow` keeps its element scrolled to the end while the user is at the end (within 24 px). When the user scrolls back, it stays where the user is; at the end again, it follows again. It reads its input in an `afterRenderEffect` write phase and tracks the position with a `scroll` host listener. Used on `ol.timeline` with `store().events().length` and on `ol.console-lines` with `consoleEvents().length`. Without it, new steps land below the fold of their panel, which is the scrolling the owner asked to remove.
+- `flow.ts`: viewBox at most 900×170 (was 1116×190), so labels stay at about 10 CSS px or more in the center column at 1280×720 (about 730 px wide). Same 12 ids and 16 edges, no overlap. Labels 13 and the state line 12 SVG units. Suggested placement, `NODE_W` 116 and `NODE_H` 34 unchanged, columns 128 apart, rows at y 4, 64, 124: guard (0, 64), agent (128, 64), approval (256, 4), finalize (256, 124), tools (384, 64), search_knowledge_base (512, 4), get_service_status (512, 64), create_incident (512, 124), kb.embed (640, 4), kb.bm25 (640, 64), kb.dense (768, 4), kb.rrf (768, 64); viewBox 884×162.
+- `app.ts`: `nav.tabs` gets `id="tabs"` (a tour target in T6).
+- At 1280×720 (planner's arithmetic): the grid is 660 px tall; the bottom band 165 px; the center column 487 px holds Now (about 96), Flow (about 175) and at least four timeline steps.
+
+```
+┌ Ops Agent Harness  [Runs] [Evaluation] [Incidents] ─────────────────────────── [Help] ┐
+├ New run ──────┬ Now ───────────────────────────────────────────┬ Approvals (1) ───────┤
+│ objective     │ [● LLM] is thinking (turn 3)                     │ create_incident a1f3 │
+│ LLM Evaluate  │ NOW get_service_status({...}) attempt 2 · ...    │ {args}         14:32 │
+│ > faults      │ Last LLM choice: get_service_status({...})       │ [Approve][Edit][Rej] │
+│ > limits [Run]├ Flow ───────────────────────────────────────────┼ Budget ──────────────┤
+├ Runs ─────────┤ guard → agent → tools → search → embed …  (lit)  │ steps      3 / 8     │
+│ a1f3 ⚠ waiting│ legend: LLM · Harness · Tool · Person            │ tool calls 2 / 12    │
+│ 9c2e ✔ done   ├ Run a1f3 · running · 3/8 steps ─────────────────┼ Attention ───────────┤
+│ (scrolls)     │ LLM attempt 1: tool_calls  search(...)           │ ⚠ warn retry …       │
+│               │   search_knowledge_base ok · hybrid, 3 results   │ (scrolls)            │
+│               │ (scrolls, keeps the newest step in view)         │                      │
+├ Console [All][Tools][Attention] ───────────────────────┬ Detail ──────────────────────┤
+│ 0.41 retry get_service_status … ⚠ warn  (follows)      │ {selected step as JSON}      │
+└────────────────────────────────────────────────────────┴──────────────────────────────┘
+```
+
+**Colours** (T3)
+- Tokens on `:root`, with dark values under `@media (prefers-color-scheme: dark)`, all as `#rrggbb` (the test reads that form only). New: `--llm`, `--harness`, `--tool`. The five attention tokens keep their names, values and meaning (spec attention table); amber also marks the person (approval) role.
+
+| Token | Meaning | Light | Dark | Contrast light on panel / bg | Dark on panel / bg |
+|---|---|---|---|---|---|
+| `--llm` (new) | the LLM: agent node, LLM timeline items, LLM actor | `#8250df` | `#d2a8ff` | 5.0 / 4.7 | 8.6 / 9.5 |
+| `--harness` (new) | the harness: guard, tools and finalize nodes, harness actor | `#0e7490` | `#4fd1dc` | 5.4 / 5.0 | 9.2 / 10.1 |
+| `--tool` (new) | tools and knowledge-base sub-steps, call items | `#bf3989` | `#f778ba` | 5.0 / 4.7 | 6.7 / 7.3 |
+| `--amber` | approval waiting, retry; the person role | `#9a6700` | `#e3b341` | 4.9 / 4.5 | above 7 |
+| `--orange`, `--red`, `--blue`, `--green` | warn, error, info, success (unchanged) | as today | as today | 5.0 to 6.1 / 4.7 to 5.7 | above 6 |
+
+  Contrast figures are the planner's calculation; the test below is the check.
+- Role classes `.role-llm`, `.role-harness`, `.role-tool`, `.role-person` set `--role` (person uses `--amber`) and the text colour. A filled chip uses `background: var(--role); color: var(--panel)`, which has the same contrast as the pairs the test checks. A left bar (`border-left: 4px solid`) uses the role or attention colour while the item's text stays `--text`; a tint is `color-mix(in srgb, <colour> 8%, var(--panel))` behind `--text`.
+- `flow.ts`: `FlowNode.role`: agent `llm`; guard, tools, finalize `harness`; approval `person`; the three tools and the four `kb.*` nodes `tool`. `FlowDiagram` adds the class `role-<role>` to each `g.node` (the `node` and `active` classes stay). Node stroke in the role colour; the active node gets a 3 px role-colour stroke, a role tint fill and the pulse. The state line keeps its attention class (`text.state` with `red`, `amber` and so on). A legend under the SVG names the four roles as words in their colours: LLM, Harness, Tool, Person.
+- `trace.ts`: `roleOf(event)` is the `FLOW` role of `nodeOf(event)`, and `harness` for events without a node (`log`, `eval`, `error`).
+- Where colour appears:
+  - Timeline: an `llm` item has a left bar in `--llm` and starts with a tag "LLM"; a call item has a left bar in `--tool` and the tool name in `--tool`; the `done` item has a left bar in its attention colour.
+  - Console: the kind cell is in the `roleOf` colour.
+  - Runs list: `runStatusStyle(status)` gives colour, icon and word: `completed` green ✔; `failed`, `limit_exceeded`, `timed_out` red ✖; `cancelled` blue ℹ; `awaiting_approval` and `interrupted` amber ⚠; `running` null (the row shows "● running" in the harness colour; the dot is `aria-hidden`). The word is the status.
+  - Attention rows: a tint and a left bar in their attention colour; the icon stays the first `aria-hidden` element of the row.
+  - Approvals: while `approvals().length > 0`, the panel gets the class `waiting` (amber left bar and amber heading); the heading text stays `Approvals (n)`.
+  - Budget: each `<meter>` gets `low` = 50% and `high` = 80% of its max, and `optimum` = 0, so the browser colours a meter near its limit; the text label stays.
+- `frontend/src/app/palette.spec.ts` reads the stylesheet as text: `import styles from '../styles.css' with { loader: 'text' };`, with `// @ts-expect-error TypeScript has no type for a text import` on the line above, as the Angular docs say (the application builder, which `ng test` uses, inlines the file as a string; `"module": "preserve"` allows the import attribute). The first `:root` block is the light theme; the `:root` block inside `@media (prefers-color-scheme: dark)` is the dark theme. Test "every colour token has a light and a dark value": `--text`, `--muted`, `--accent`, `--llm`, `--harness`, `--tool`, `--amber`, `--orange`, `--red`, `--blue`, `--green`, `--panel` and `--bg` are `#rrggbb` in both blocks. Test "every text colour reaches 4.5:1 on the panel and the page background in both themes": each of the first eleven against `--panel` and against `--bg` (WCAG 2.2 relative luminance and contrast ratio). It runs with `npm test` and in CI's `frontend` job, next to the stylesheet it checks. No new file besides the spec: no `.d.ts`, no angular.json change. Fallback, only if `ng test` reports the `@ts-expect-error` as unused: drop it and add `frontend/src/css-text.d.ts` with `declare module '*.css' { const text: string; export default text; }`, and log why.
+
+**Now panel: who is working** (T4)
+- `TraceStore.activity` (computed), first rule that holds. "Latest node event" is the latest event with `nodeOf(e) !== null` (so not `log`, `eval` or `error`). The running call and its attempt are M4's `running` rule, as in `now()`.
+
+| State | actor | text |
+|---|---|---|
+| no event yet | none | `Waiting for the first event` |
+| a `done` event | none | its msg (for example `run completed`) |
+| the latest `approval` event is `pending` | person | `must approve, edit or reject <tool> in Approvals` |
+| a running call whose latest event (M4's "latest event about it", by `tool_call_id`) is a `retry` | harness | `waits <data.delay_s with 2 decimals> s, then runs <tool> again (attempt <n>)` |
+| a running call | harness | `runs <tool> (attempt <n>)` |
+| latest node event: `stage` of node `agent` | llm | `is thinking (turn <t>)`, t = the latest `stage guard` event's `data.steps` + 1 |
+| latest node event: `retry` of node `agent` | llm | `is thinking (turn <t>, attempt <data.attempt + 1>)` |
+| latest node event: `llm` | harness | `checks the LLM's reply` |
+| latest node event: `stage` of node `guard` | harness | `checks the limits: <msg>` |
+| latest node event: `stage` of node `finalize` | harness | `finishes the run` |
+| latest node event: a decided `approval` | harness | `continues after the decision on <tool>` |
+| latest node event: `tool` | harness | `has the result of <tool>` |
+| anything else | harness | `is working: <msg>` |
+
+- `TraceStore.lastReply` (computed): the latest `llm` event whose status is `tool_calls`, `final` or `malformed`; null before one.
+- Now panel (page): a badge with the actor word (LLM, Harness, Person; no badge for none), filled in the role colour, with a pulsing dot (`aria-hidden`), then the text: "[● LLM] is thinking (turn 3)". Below: the M4 NOW line (`nowText()`, unchanged). Below, when `lastReply` is set: `Last LLM choice: <name>(<compact args>), ...` for `tool_calls`; `Last LLM choice: the final answer` for `final`; `Last LLM reply was malformed: <data.reason>` for `malformed`; one line with an ellipsis and the full text as `title`.
+- The page's activity: no run open → none, `No run open. Start one on the left or pick one from the list.`; a run that is not live (M4 `live()` false: interrupted, or final before its `done` arrives) → none, `<status>: nothing runs now`; otherwise `store().activity()`.
+- The section keeps `aria-live="polite"` and the heading `id="now"`.
+- Tool steps with the mock tools take milliseconds, so the harness badge shows mostly during retries, timeouts and approvals, and the LLM badge during each 300–500 ms wait. The timeline keeps every step. A `latency` fault (1000 ms by default) slows one tool down for a person to watch.
+
+**Result panel** (T5)
+- When the store holds a `done` event (the timeline's last item has type `done`), the Now panel's heading reads "Result" (same `id="now"`) and it shows, instead of the actor, NOW and choice lines:
+  - the status with `attentionStyle(done)`: icon, status word and colour class, for example "✔ completed" in green, "✖ limit_exceeded" in red, "ℹ cancelled" in blue;
+  - the error in words, when `data.error` is set: `ERROR_TEXT[error]`, else the code;
+  - the final answer from the run detail (`detail().final`) in a larger font with `white-space: pre-wrap`, scrolling inside. The page refreshes the detail on `done` (M4), so until `detail().status` is a final status the panel shows `…`; then the answer, or `No final answer.` when it is null;
+  - `Incident <resultText>` for each `create_incident` call item with status `ok` (for example `Incident INC-26F42A3B open`);
+  - `<steps> steps · <tool calls> tool calls` from `used()`;
+  - the answer's evaluation badges, as in the timeline's `done` item.
+- `ERROR_TEXT` (from DESIGN §3's Cause column):
+  - `max_steps`: `The run used all its steps (max_steps).`
+  - `max_tool_calls`: `A call was blocked: the tool-call limit (max_tool_calls) was reached.`
+  - `recursion_limit`: `The graph's recursion limit stopped the run (a backstop).`
+  - `llm_unavailable`: `The LLM did not answer after all attempts, or refused the call.`
+  - `malformed_reply`: `The LLM sent more malformed replies in a row than max_repairs allows.`
+  - `internal_error`: `An unexpected error stopped the run; the details are in the API log.`
+  - `max_run_seconds`: `The run took longer than max_run_seconds.`
+- The timeline's `done` item keeps its content.
+
+**Help tour** (T6)
+- `App` header: h1, `nav.tabs#tabs`, then `<button type="button" class="help" aria-haspopup="dialog">Help</button>` pushed to the right (`margin-left: auto`), outside `.tabs`. A click sets the tab to Runs and calls `tour.start()`. `<app-tour>` sits after `</main>`; its `closed` output focuses the Help button.
+- `TOUR_STEPS`, in this order: `{id, title, text}`. The highlighted element is `document.getElementById(id)?.closest('section') ?? element`.
+
+| # | id | title | text |
+|---|---|---|---|
+| 1 | `new-run` | Start a run | Write an objective and press Run. For example: "payments-api is returning 5xx errors. Investigate and open an incident if needed." Fault switches and limits start the demo scenarios. |
+| 2 | `runs` | Runs | Every run, newest first, with its status. Click a run to open it. |
+| 3 | `now` | Now | Who works at this moment: the LLM thinks, the harness checks limits and runs tools, or a person must decide. When the run ends, this panel shows the result. |
+| 4 | `flow` | Flow | The agent loop. The running node is lit, and each node shows its last status. The legend gives the colour of the LLM, the harness, the tools and the person. |
+| 5 | `run-title` | Timeline | Each LLM decision and each tool call, with its arguments, attempts, result and time. Click a step to see its data in Detail. |
+| 6 | `approvals` | Approvals | create_incident waits here for a person. Approve it, edit it, or reject it with a reason before the countdown ends. |
+| 7 | `budget` | Budget | Steps, tool calls and seconds used against the run's limits. |
+| 8 | `attention` | Attention | What to look at: retries, failures, limits and degraded search, each with a colour, an icon and a word. |
+| 9 | `console` | Console and Detail | Every event of the run, filtered by All, Tools or Attention. Click a line to see its data in Detail. |
+| 10 | `tabs` | More tabs | Evaluation measures search quality on a golden set. Incidents lists the incidents that runs created. |
+
+- `Tour` renders one `<dialog class="tour" aria-labelledby="tour-title" aria-describedby="tour-text">`, opened with `showModal()`: the page behind is inert, Tab stays in the dialog, Esc fires `cancel` and closes it. The dialog box itself is transparent and covers the viewport; `::backdrop` is transparent. Inside:
+  - `div.tour-ring` (`aria-hidden="true"`, `pointer-events: none`, `position: fixed`) at the target's rect plus 4 px: a 3 px `--accent` outline and `box-shadow: 0 0 0 100vmax rgb(0 0 0 / 0.4)`, which dims everything but the target. It is rendered only when the step has a target with a size.
+  - `div.tour-card` (panel background, above the ring) with `h2#tour-title`, `p#tour-text` in an `aria-live="polite"` block, `Step <n> of 10`, and the buttons Back (disabled on step 1), Next (on step 10: Done, which closes) and a close button "×" with `aria-label="Close the tour"`. Width `min(26rem, 100vw - 2rem)`, centred across. `data-place` sets its spot: `bottom` (1rem from the bottom), `top` (1rem from the top) or `center`.
+- `placement(rect, width, height)` is pure: no rect, or a rect with no width or height, gives `{ring: null, place: 'center'}`; otherwise the ring is the rect grown by 4 px and clamped to the viewport, and `place` is `bottom` when the rect's vertical centre is in the top half, else `top`.
+- Each step, after render (`afterRenderEffect`, reading the step signal): find the target; `scrollIntoView?.({block: 'nearest'})` (jsdom has none); measure with `getBoundingClientRect()`; set the placement signal. Measure again on `window:resize` while open. `body:has(dialog.tour[open]) { overflow: hidden }` stops the page from scrolling behind the tour in the stacked layout.
+- Focus: `start()` opens the dialog and focuses Next once rendered. Closing in any way (Done, ×, Esc, which ends in the dialog's `close` event) resets the step and emits `closed`; `App` then focuses Help. Browsers also return focus on their own; the explicit focus makes it testable.
+- A missing target (no element, or no size) never throws: the card shows in the centre with no ring, and Back and Next work.
+- Memory (owner, round 1): none. Only Help starts the tour; it never starts by itself; nothing goes to `localStorage` or anywhere else.
+- Narrow screens: the same card and ring; the card's width follows the viewport, and the target is scrolled into view first.
+
+**Tests**
+- Backend: no test sleeps for real. `test_llm.py` patches `app.llm.fake.sleep` with a recorder; the cancel test uses the real sleep with a one-minute wait and cancels it.
+- Frontend: jsdom 30.1.1 has no `showModal`, `close`, `scrollIntoView` or `matchMedia`, returns zero rects and zero `scrollHeight`/`clientHeight`, and keeps `scrollTop` as a plain field. `tour.spec.ts` and `app.spec.ts` add `HTMLDialogElement.prototype.showModal` (sets `open`) and `close` (removes `open`, dispatches `close`) before each test and delete them after. `follow.spec.ts` defines `scrollHeight` and `clientHeight` on the element with `Object.defineProperty`. Tour specs stub `getBoundingClientRect` on the target section.
+- M4 conventions stay: `await fixture.whenStable()`; fake timers with `shouldAdvanceTime: true`; `vi.waitFor` for a `fetch` started from an effect or a timer.
+
+**Keeping the M4 specs green.** These existing assertions constrain the new UI; do not change them, build around them:
+- `#now` tests: the Now section contains `NOW <tool>(<args>) attempt <n>` while a call runs, `NOW create_incident({...}) · awaiting approval` while an approval waits, and no uppercase `NOW` otherwise; no `attempt` anywhere in the section while an approval waits. So the uppercase word NOW appears only in `nowText()`, and the person text has no "attempt".
+- `.timeline li`, `.console-lines li`, `.attention li` keep their classes; in an attention row the icon stays the first `[aria-hidden="true"]` element.
+- The console filters are found as the buttons whose trimmed text is exactly `Tools` or `Attention`: no other button in the Runs page may have those texts (the legend and the tour use no such button; the tour lives in `App`).
+- Exactly three `<meter>` elements, with `steps 3 / 10` and `tool calls 2 / 5` as text; `Open a run to see its budget.` stays.
+- `#approvals` contains `Approvals (n)`; its section shows request errors.
+- `.tabs button` texts are exactly Runs, Evaluation, Incidents; `main > section` holds only the three tab panels.
+- `g.node`, `g.node.active`, `line.edge`, `text.state` (with its colour class) stay in `FlowDiagram`; `FLOW` keeps 12 ids, 16 edges and no overlap.
+- `TraceStore.now()` keeps its shape (`toEqual` in `trace.spec.ts`): the actor is a new computed, not a new field of `now()`.
+
+**Tests changed on purpose**: none. Checked: no backend test reads `llm.fake_delay_ms` or asserts `latency_ms` values; every CLI test runs in process (`cli.amain`), so the autouse fixture reaches it; `test_scenarios.py` and `test_docs.py` read files only; no frontend spec asserts flow positions, panel order or the absence of the NOW, flow or console panels without a run.
+
+**Not built** (add when someone asks)
+- "Started" events in the backend (owner, round 1: the UI infers the actor instead).
+- A tour that starts by itself or remembers it was seen (owner, round 1), arrow-key shortcuts in the tour, a theme toggle, resizable or collapsible panels, a replay or slow-motion mode, a minimum display time per step, a wait for mock tools, deep links to a run, cancel and resume buttons (M4).
+
+## Library notes (checked 2026-09-29 in `frontend/node_modules`, MDN and web.dev)
+- Angular 22.2.0 (installed): `afterRenderEffect` is public API, with the phases `earlyRead`, `write`, `mixedReadWrite` and `read`; setting a signal inside it schedules one more render. `input`, `output`, `viewChild` and `host` listeners (`'(window:resize)'`, `'(scroll)'`) as in M4.
+- `@angular/build` 22.2.0 (installed): `ng test` builds the specs with the application builder (`unit-test/runners/vitest/build-options.js`), whose esbuild options always include `loader-import-attribute-plugin.js`: an import with `with { loader: 'text' }` (also `base64`, `binary`, `dataurl`, `file`) gets the file's content. It came with angular/angular-cli PR #28040; the Angular docs ask for `@ts-expect-error` or a type file, since TypeScript has no type for it. The global `styles.css` is not applied to jsdom (the builder links it only in browser mode), so a spec cannot read the tokens from computed styles, and jsdom evaluates no `prefers-color-scheme` query anyway.
+- jsdom 30.1.1 (installed): `HTMLDialogElement` has only the `open` property; no `scrollIntoView` and no `matchMedia`; `getBoundingClientRect()` returns zeros; `scrollHeight` and `clientHeight` return 0; `scrollTop` is a settable field.
+- Browsers (all Baseline): `<dialog>` with `showModal()` (Esc fires `cancel`, the page behind is inert; focus returns to the opener in current Chrome, Firefox and Safari 16.1+); `dvh` units (2022); `color-mix()` and `:has()` (2023); `<meter>` `low`/`high`/`optimum`.
+- This machine: Google Chrome at `/Applications/Google Chrome.app` (headless screenshots and the DevTools protocol for the verifier); Node 26.9.0 has a global `WebSocket`, so a scratch script can drive Chrome over the DevTools protocol with no package.
+- Skills: none but the repo's two are installed. `frontend-design` exists in the official plugin marketplace, but it is not enabled here, and its brief (a distinctive visual identity, chosen typefaces, bold choices) goes beyond this plan's pinned palette and system fonts; not used.
+
+## Risks
+- jsdom has no layout: the one-screen fit, the ring's place and the real focus trap cannot be unit-tested. The verifier checks them in Chrome (Proof), and the owner at gate 2.
+- The existing specs pin some copy (see "Keeping the M4 specs green"). A careless label ("NOW", "attempt", a button called "Tools") breaks them; the rule lists each one.
+- Tool calls with the mock tools take milliseconds: the harness badge flashes between LLM turns. That is the truth, and the timeline keeps every step; the `latency` fault shows a slow tool. If the owner wants tools slowed down too, that is a new request.
+- The wait adds about 10 s to `evals/run.sh` and to CI's `e2e` job, and about 1.5 s to each fake CLI run and Docker demo run. Tests stay fast through the autouse fixture; a new test that runs the fake LLM in a subprocess would wait for real.
+- Flow labels at 1280×720 are about 10 CSS px. If the verifier finds them too small, narrow the side columns (the grid rule) before shrinking the text.
+- Amber on `--bg` is 4.54:1, just above AA. The contrast test stops a change that goes below.
+- `aria-live` on the Now panel speaks about twice a second while a fake run runs; it was already live in M4.
+- The tour's ring is measured once per step and on resize; a panel that grows during the tour (a new approval) leaves the ring a little off until the next step.
+- CI runs the new specs and the contrast test in the existing jobs; no CI change.
+
+## Proof
+Each task's checks pass at its own commit, with the commands in CLAUDE.md.
+
+| AC | Evidence | Task |
+|----|----------|------|
+| AC-13 (fake LLM pace) | `test_llm.py::test_fake_planner_waits_in_the_configured_range` (with (300, 500) and a recorder: one wait between 0.3 and 0.5 s); `::test_fake_planner_waits_nothing_when_the_range_is_zero`; `test_skeleton.py::test_config_checks_the_fake_llm_delay` (`[500, 300]` and `[-1, 5]` refused; `config.yaml`, read again from the file because the autouse fixture patches `cfg`, loads as (300, 500)); `test_lifecycle.py::test_cancel_during_the_fake_llm_wait` (a one-minute wait, cancelled once the `stage agent` event exists: `cancelled` within 1 s, no `llm` event, one `done`). Logged: `evals/run.sh` `7 passed, 0 failed` and newman folder 1 against uvicorn with `config.yaml`, with their times | T1 |
+| AC-13 (one screen) | `follow.spec.ts` › follows the newest item; stays where the user scrolled back; follows again at the end. `runs-page.spec.ts` › every panel shows its empty text before a run is open. `flow-diagram.spec.ts` › the viewBox is at most 900×170. Verifier at 1280×720 and 1920×1080: no page scroll, screenshots (below) | T2 |
+| AC-13 (colours) | `palette.spec.ts` › every colour token has a light and a dark value; every text colour reaches 4.5:1 on the panel and the page background in both themes (falsifiable: amber is 4.54:1 on `--bg`, so a lighter amber fails). `trace.spec.ts` › `runStatusStyle` for every run status; `roleOf` for each kind. `flow-diagram.spec.ts` › each node has its role class; the legend names LLM, Harness, Tool and Person. `runs-page.spec.ts` › a run row shows icon, status word and colour; meters carry `low`, `high` and `optimum`; the Approvals panel is marked while approvals wait; an LLM timeline item starts with the tag LLM. Verifier screenshots in light and dark | T3 |
+| AC-13 (who is working) | `trace.spec.ts` › activity: each row of the actor table (LLM thinking and its turn; LLM retry attempt; harness running a call with its attempt; harness waiting for a retry; person; harness after a reply, a guard, a decision, a result, at finalize; none after `done`; none before any event); against the fixture: seq 3 LLM turn 1, 5 harness runs search_knowledge_base (attempt 1), 12 LLM turn 2, 16 harness waits 0.10 s then runs get_service_status again (attempt 2), 23 person, 24 harness continues, 29 LLM turn 4, 31 harness finishes, 32 none; `lastReply` skips `retry` and `unavailable` replies. `runs-page.spec.ts` › the Now panel shows the actor word and text and the last LLM choice; an interrupted run shows no actor | T4 |
+| AC-13 (result) | `runs-page.spec.ts` › Result panel: completed (✔, green, the answer, `Incident INC-… open`, steps and tool calls); `limit_exceeded` with `max_steps` (✖, red, the `ERROR_TEXT`, `No final answer.`); cancelled (ℹ, blue); the answer badges | T5 |
+| AC-13 (tour) | `tour.spec.ts` › `placement` (top-half target → bottom; bottom half → top; none or zero size → centre, no ring); start opens the dialog at step 1 of 10 and focuses Next; Next and Back walk the steps, Back disabled on step 1, Done on step 10 closes; a present target gets the ring at its rect; a missing target shows the centred card and Next still works; ×, Done and the dialog's `close` event (Esc) each emit `closed`. `app.spec.ts` › Help sits in the header after the tabs, outside `.tabs`; a click from the Evaluation tab shows the Runs tab and opens the tour; closing focuses Help. Verifier: tour screenshots, Esc, focus | T6 |
+| AC-13 (manual) | `docs/REVIEW_GUIDE.md` §4 "UI check (AC-13)", run by the owner at T6's gate 2 | T6 |
+
+The M4 rows of AC-13 stay as they are (`trace.spec.ts`, `approval-inbox.spec.ts`, `flow-diagram.spec.ts`, `runs-page.spec.ts`).
+
+**Verifier** (T2, T3 and T6; the main agent may run it instead). Scratch files only; nothing is added to the repo.
+1. `cd frontend && npm run build`, then from `backend/`: `DB_PATH=<scratchpad>/m6.db uv run uvicorn app.main:app --port 8000 --timeout-graceful-shutdown 5` (the built UI on :8000).
+2. Seed through the API: the Approve scenario (left pending), the Step limit scenario (`max_steps: 2`), a plain run, so the list, the inbox and a result have content.
+3. Start `"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new --remote-debugging-port=9222` and drive it with a Node script over the DevTools protocol (`Emulation.setDeviceMetricsOverride`, `Emulation.setEmulatedMedia` for `prefers-color-scheme`, `Runtime.evaluate`, `Page.captureScreenshot`, `Input.dispatchKeyEvent`). For 1280×720 and 1920×1080, light and dark: load the page; record `document.scrollingElement.scrollHeight <= innerHeight` (must be true) and a screenshot with no run open; click the pending run's row and screenshot (the Now panel says a person must decide); start the Retry scenario (`get_service_status` timeout ×2), click its row at once and screenshot within 4 s (the harness runs get_service_status with its attempt); click the Step limit run and screenshot the Result panel. At 800×900: the page scrolls, and after `scrollTo(0, 600)` the Now panel is still at the top.
+4. T6: click Help; screenshot steps 1 and 4 at 1280×720, 1920×1080 and 800×900; press Tab five times and record that `document.activeElement` stays inside the dialog; press Escape and record that the dialog is closed and `document.activeElement` is the Help button.
+5. Log every boolean and the screenshot paths in the Pipeline log.
+
+## Doc changes
+Each note goes in the commit of the task that builds the behaviour.
+- T1, `specs/ops-agent-harness.md`, LLM, the `fake` bullet ends with: "It waits a random 300–500 ms before each reply (`llm.fake_delay_ms` in `config.yaml`; `[0, 0]` turns the wait off), so a person can follow a run in the UI. The wait counts toward `llm.timeout_s` and `latency_ms`; tests set it to `[0, 0]`." AC-13 gains the bullet "with the fake LLM each reply takes 300–500 ms (`llm.fake_delay_ms`), so a person can follow the run; a cancel during that wait still ends the run `cancelled`;" and "backend tests of the fake LLM's wait" in its "Proved by" sentence.
+- T1, `docs/DESIGN.md` §7, the `config.yaml` bullet: "... output size, evaluation." becomes "... output size, evaluation, and the fake LLM's wait before each reply." §8, "Fake LLM" bullet, add: "It waits 300–500 ms before each reply (`llm.fake_delay_ms`), so a run can be followed in the UI; `[0, 0]` removes the wait."
+- T1, `docs/adr/0003-llm-openai-compatible-with-fake.md` status line, add: "· Changed in M6: `FakePlanner` waits `llm.fake_delay_ms` (300–500 ms) before each reply, so a person can follow a run ([spec, LLM](../../specs/ops-agent-harness.md#llm))". Index row in `docs/adr/README.md`: "Accepted (FakePlanner incident rule changed; reply wait added in M6)".
+- T1, `docs/REVIEW_GUIDE.md` R12: `Where` adds `llm/fake.py:FakePlanner`; `How to verify` adds `test_llm.py::test_fake_planner_waits_in_the_configured_range`, `test_lifecycle.py::test_cancel_during_the_fake_llm_wait`; `Built in` becomes "M4, M5, M6".
+- T2, spec, UI: the Left, Center, Right and Bottom bullets and a new layout bullet, as in the final text below (T2's parts). AC-13 bullet: "from 1280×720 CSS pixels up the Runs tab fits the window: the page does not scroll, panels scroll inside, and the timeline and the console keep the newest step in view;".
+- T2, `docs/adr/0015-ui-run-console-not-chat.md` status line, add: "· Refined in M6: the Runs tab fits one screen, with the NOW bar and the flow above the timeline and the console and detail below ([spec, UI](../../specs/ops-agent-harness.md#ui))". Index row: "Accepted (one-screen layout, M6)".
+- T2, `docs/DESIGN.md` §8, new bullet: "**UI layout.** From 1200×640 CSS pixels up the Runs tab fits the window and each panel scrolls inside; smaller windows stack the panels, the page scrolls and the Now panel stays at the top."
+- T2, `docs/REVIEW_GUIDE.md` R12: `Where` adds `frontend/src/app/follow.ts:Follow`; `How to verify` adds `follow.spec.ts`. §4 UI check: "open http://localhost:4200" becomes "open http://localhost:4200 in a window of at least 1280×720", and a step "0. The page does not scroll; only panels do, and the timeline keeps the newest step in view."
+- T3, spec, UI: the colours bullet below. AC-13 bullet: "the LLM, the harness, the tools and the person have one colour each, and every text colour keeps a contrast of at least 4.5:1 in the light and the dark theme;" and "a colour-contrast test" in "Proved by". ADR 0015 status note ends with "; one colour per actor (LLM, harness, tool, person) next to the attention colours"; index row "Accepted (one-screen layout and actor colours, M6)". REVIEW_GUIDE R12 `How to verify` adds `palette.spec.ts`; §4 adds a step "5. Switch the OS to dark mode: every colour keeps its meaning and stays readable."
+- T4, spec, UI: the Now-panel clause below. AC-13 bullet: "the Now panel says at each moment whether the LLM, the harness or a person is working, on which tool and attempt, and what the LLM chose last;" and "actor" in "event → node state, NOW bar, actor, attention". `docs/DESIGN.md` §5, new paragraph: "The UI infers who is working from the events it already gets: a `stage` event of node `agent` starts an LLM turn; a `tools` stage after an `llm` reply starts its first call, and each final `tool` event hands over to the next call; a `retry` event carries the wait before the next attempt; a `pending` approval waits for a person; anything else is the harness between steps. No event marks a start, so a second attempt shows from its `retry` event. The mock tools answer in milliseconds, so the harness shows mostly during retries, timeouts and approvals; a `latency` fault slows one tool down." REVIEW_GUIDE §4 step 1 adds: "the Now panel switches between the LLM (thinking, about 0.4 s a turn), the harness (with the tool, its arguments and attempt) and a person, and shows the LLM's last choice".
+- T5, spec, UI: the Result clause below. AC-13 bullet: "when the run ends, the Result panel shows the status in colour, icon and word, the error in words, the final answer and the incident created;". REVIEW_GUIDE §4 step 2 adds "the Result panel shows ✔ completed with the answer and the incident", step 3 adds "the Result panel explains the limit".
+- T6, spec, UI: the Help sentence below. AC-13 bullet: "Help, at the top right, starts a tour that highlights each panel in turn; Esc closes it and focus returns to Help." and "the tour" in "Proved by". `README.md`, Try it, UI line ends with "Help, at the top right, walks through the page." REVIEW_GUIDE R12: `Where` adds `frontend/src/app/tour.ts:Tour`; `How to verify` adds `tour.spec.ts`, `app.spec.ts`; §4 step "4. Press Help: the tour highlights each panel; Esc closes it and focus returns to Help."
+- No Postman, `.env.example`, CLAUDE.md or CI change. No new ADR: the UI changes refine ADR 0015 (status notes, as M5 did for ADRs 0017 and 0018); the wait is a status note on ADR 0003.
+
+Final text of the spec's UI section after T6 (task tags are for the plan only):
+
+> A run console, not a chat ([0015], [0016]). Angular, served by FastAPI in production. Tabs: Runs, Evaluation, Incidents. Help, at the top right, starts a guided tour of the page. [T6]
+> - Left: new run form (objective, LLM mode, fault switches, limits, evaluate) and the runs list, each run with its status in colour, icon and word. [T2; status style T3]
+> - Center, from the top: the Now panel with the NOW bar (running tool, arguments, attempt) [T2], the actor at work (the LLM, the harness or a person) and the LLM's last choice [T4]; when the run ends it becomes the Result panel: the status in colour, icon and word, the error in words, the final answer, the incident created and the evaluation badges [T5]. Then the flow diagram with one node per tool and knowledge-base sub-steps, and the run timeline with each LLM decision and each tool call (name, arguments, attempts, result, duration, evaluation badges). [T2]
+> - Right: approval inbox for all runs (TTL countdown; approve, edit, reject with reason), budget meters (steps, tool calls, time), attention list.
+> - Bottom: console with filters (All, Tools, Attention) and the detail panel with the real data of a step. [T2]
+> - From 1200×640 CSS pixels up the Runs tab fits the window: the page does not scroll, each panel scrolls inside, and the timeline and the console keep the newest step in view unless the user scrolled back. In smaller windows the panels stack, the page scrolls and the Now panel stays at the top. [T2]
+> - Colours: one per actor (LLM, harness, tool, person) on the Now panel, the flow and the timeline, next to the attention colours below. Every text colour has a contrast of at least 4.5:1 in the light and the dark theme. [T3]
+> - Attention is shown with colour, icon and text, never colour alone.
+
+## Handoffs
+- After M6 (no later milestone):
+  - `plans/README.md` "If time runs short" is stale since M5: it still names M5 T1 (built) and 34.5h. It is the owner's section; this plan does not edit it.
+  - The colour check is `palette.spec.ts`: a palette change in `styles.css` is checked by `npm test`. If a TypeScript release adds types for import attributes, its `@ts-expect-error` line becomes an error; delete that line then.
+  - Tour copy lives in `TOUR_STEPS`; a panel that moves or changes its heading id updates its step.
+  - To watch a tool run in a demo, use the `latency` fault; the mock tools themselves stay instant.
+
+## Open questions
+None. In round 1 (2026-09-29) the owner accepted all four recommended defaults; they are written into the rules above and marked "(owner, round 1)":
+1. Who is working is inferred in the UI from the existing events; no new backend events, no API, event, Postman, fixture or grader change.
+2. Every panel stays: one screen from 1200×640 CSS pixels up, the Now panel and the flow above the timeline, console and detail in a shared bottom band, the Now panel turns into the Result panel when the run ends, and smaller windows keep the stacked page with a sticky Now panel.
+3. The 300–500 ms wait applies wherever the fake LLM runs from `config.yaml` (UI, CLI, Docker, `evals/run.sh`, CI's `e2e` job, newman); unit tests set it to `[0, 0]` through an autouse fixture.
+4. The tour stores nothing; only Help starts it.
+
+Defaults to confirm at gate 1 (planner choices, not asked): the palette (violet LLM, teal harness, pink tools, amber person) and all copy (actor texts, `ERROR_TEXT`, tour steps); the contrast test as a frontend spec (`palette.spec.ts`, which reads `styles.css` as text); no frontend skill in the Skills column; `FLOW` narrowed to a viewBox of at most 900×170; native `<meter>` colours; plans/README with the M6 row as `draft`, 41 tasks and 40.5h in the total, and AC-13 built in M4 and M6.
+
+## Pipeline log
+| Phase | Result | Notes |
+|-------|--------|-------|
+| Phase 1 planner | NEEDS_ANSWERS | Written from the owner's request (6 points) and checked against the spec (UI, LLM, Events, attention table, AC-13), ADRs 0003 and 0014–0018, DESIGN, the review guide and `test_docs.py`, the M4 and M5 plans, and the code at `a13d146`: `config.py`, `config.yaml`, `FakePlanner`, `llm_gateway.next_reply` (the wait sits inside `asyncio.timeout` and `latency_ms`), `tool_gateway.execute`, `loop.py` stage events, the runner's cancel, `conftest.py` (`zero_retry_delay` pattern; CLI tests run in process), `evals/run.sh` (60 s per scenario), the Postman folder 1 polls (40 × 300 ms), CI; the whole frontend (`trace.ts` running-call rule, `runs-page.html`, `styles.css`, `flow.ts` 1116×190, every spec and the assertions that constrain new copy) and the fixture's 32 events. Library facts: Angular 22.2.0 `afterRenderEffect`; jsdom 30.1.1 without `showModal`, `close`, `scrollIntoView` or `matchMedia`; Chrome and Node 26 on this machine for a DevTools-protocol verifier. 6 tasks, 6h; plans/README.md row added (`draft`, total 41 tasks, 40.5h; AC-13 in M4 and M6). 4 open questions (started events, layout, where the wait applies, tour memory) |
+| Phase 1 planner (round 2) | READY | Owner, 2026-09-29: all four defaults accepted (activity inferred in the UI, no new backend events; every panel kept, one screen from 1200×640, Now and Flow above the timeline, console and detail in the bottom band, Now becomes Result, stacked page with a sticky Now panel below that size; the wait wherever the fake LLM runs from `config.yaml`, zero in unit tests; the tour stores nothing). Markers changed to "(owner, round 1)"; Open questions: none, with the record. Coordinator's check on the contrast test: the round-1 reason ("the frontend build cannot read the stylesheet as text") was wrong. The installed `@angular/build` 22.2.0 inlines a file with `import ... with { loader: 'text' }` in the build `ng test` uses (`loader-import-attribute-plugin.js`), so the test moved from `backend/tests/test_ui_palette.py` to `frontend/src/app/palette.spec.ts`: it checks a frontend file with the frontend runner, in `npm test` and CI's `frontend` job. Files, T3 row, colour rule, Proof, Doc changes (REVIEW_GUIDE names `palette.spec.ts`), Handoffs, Library notes and gate-1 defaults updated. Estimate unchanged (6h). Status stays `draft` until gate 1 |
+| Gate 1 | Approve | Owner approved the plan on 2026-09-29: 6 tasks, 6h. Status `approved`; plans/README.md row `approved` |

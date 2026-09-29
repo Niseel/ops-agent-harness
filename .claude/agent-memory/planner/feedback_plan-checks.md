@@ -1,6 +1,6 @@
 ---
 name: plan-checks
-description: Checks that found real gaps when the planner reviewed milestone plans (M1–M3 phase 1, 2026-09-27; M4 UI and M5 ship phase 1, 2026-09-28); run them on every plans/mN-*.md review
+description: Checks that found real gaps when the planner reviewed milestone plans (M1–M3 phase 1, 2026-09-27; M4 UI and M5 ship phase 1, 2026-09-28; M6 UI upgrade, 2026-09-29); run them on every plans/mN-*.md review
 metadata:
   type: feedback
 ---
@@ -52,6 +52,14 @@ Added in M5 phase 1 (2026-09-28, ship plan):
 - "Clean clone" proof before the commit exists: `git add -A && git archive "$(git write-tree)" | tar -x -C <dir>` exports exactly what the commit will hold.
 - CI changes cannot run before the owner pushes: plan a YAML parse, the commands by hand, and a fix commit if the first run fails.
 - Agents cannot open `.env.*`: plans must not need an edit to `.env.example`.
+
+Added in M6 phase 1 (2026-09-29, UI upgrade plan):
+- UI changes: grep every spec for text and selector assertions first and list them as constraints ("keep green"), not as tests to change. Here: uppercase `NOW` only in the NOW line, no `attempt` while an approval waits, filter buttons found by exact text, the first `aria-hidden` in a row is the icon, exactly 3 meters, `now()` compared with `toEqual` (add a new computed instead of a field).
+- jsdom 30.1.1 has no `showModal`/`close`/`scrollIntoView`/`matchMedia` and zero rects and scroll sizes: plan prototype stubs and a pure placement function.
+- A frontend spec CAN read a repo file as text: `ng test` builds with the application builder, which supports `import x from '../styles.css' with { loader: 'text' }` (plus `// @ts-expect-error`). So a check of a frontend file stays a frontend spec. I first claimed the opposite without reading `@angular/build`, and the coordinator caught it: before planning around a tool "limit", find it in the installed source.
+- The verifier subagent has only Bash and Read: screenshots and no-scroll checks need headless Chrome driven over the DevTools protocol by a scratch Node script (Node's global `WebSocket`).
+- A wait in a test double: read the config at call time, zero it in an autouse conftest fixture, patch a module-level `sleep` name; then check e2e wait budgets (`evals/run.sh` 60 s per scenario, newman 40 x 300 ms) and subprocess tests.
+- The Skills column must name only invocable skills; a marketplace plugin that is not enabled cannot be listed.
 
 Validated approach (owner accepted every default in M1 and M2 round 1, 2026-09-27, and all four in M5 round 1, 2026-09-28): write each question's recommended default into the rules before asking, and list what each other answer would change. Finalizing is then small: mark the rules "(owner, round 1)", set Open questions to "None" with a one-line record, add a Pipeline log row, and re-check wording that the answers touch (spec notes, handoffs, test details).
 
