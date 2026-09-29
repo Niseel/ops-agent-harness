@@ -2,19 +2,19 @@
 
 One page to check this project against the brief. Each row says where a requirement lives, how to verify it, and why it was built that way.
 
-**Status of this guide:** skeleton. Locations and test names come from the [plans](../plans/README.md). Milestone M5 (task T5) replaces them with the real `file:symbol` and checks every row. Until then a row's status is the milestone that builds it.
+**Status of this guide:** checked in M5 T5 (2026-09-29). `backend/tests/test_docs.py` checks that every test name, every `file:symbol` and every relative link in this guide exists; CI runs the tests, the scenario evals and the Postman demo flow; each How-to-verify step was run by hand (log in [plans/m5-ship.md](../plans/m5-ship.md)). "Built in" is the milestone that built the row.
 
 IDs: `R*` requirements and `AC-*` acceptance criteria are defined in [specs/ops-agent-harness.md](../specs/ops-agent-harness.md). Decisions are in [docs/adr/](adr/README.md).
 
 ## 1. Five-minute quickstart
 
-Available once M3 is merged (API and CLI) and M4 (UI). No API key is needed: the fake LLM is the default.
+No API key is needed: the fake LLM is the default. The quickest path is Docker only: `docker compose --profile app up --build`, then open http://localhost:8000 (UI and API).
 
-From the repo root:
+On the host, from the repo root:
 
 ```bash
 docker compose up -d qdrant                            # knowledge base store
-(cd backend && uv sync --locked && uv run pytest -q)   # install and test
+(cd backend && uv sync --locked && uv run pytest -q -m "not live")   # install and test; live tests need real endpoints (README, Test)
 ```
 
 In a second terminal, start the API on :8000 and leave it running:
@@ -25,35 +25,36 @@ cd backend && uv run uvicorn app.main:app --port 8000 --timeout-graceful-shutdow
 
 Then pick one:
 
+- **Scenario evals** (from the repo root): `evals/run.sh` runs the seven demo scenarios of section 4 against the API and grades each trace (`7 passed, 0 failed`).
 - **Postman / newman** (from the repo root): `npx --yes newman@6.2.2 run docs/postman_collection.json --folder "1. Demo flow: create → approve → trace"` creates a run, approves the incident and checks the trace.
 - **CLI** (from `backend/`): `uv run python -m app.cli run --no-eval "payments-api is returning 5xx errors. Investigate and open an incident if needed."` and answer the approval prompt (`--no-eval` skips online evaluation, which waits minutes for a slow local judge).
-- **UI** (from the repo root): `cd frontend && npm ci && npm start`, open http://localhost:4200. With Docker only: `docker compose --profile app up --build`, open http://localhost:8000.
+- **UI** (from the repo root): `cd frontend && npm ci && npm start`, open http://localhost:4200.
 
 ## 2. Requirement matrix
 
-Paths are under `backend/app/` unless shown otherwise. Postman names are exact folder and request names in [docs/postman_collection.json](postman_collection.json).
+`Where` is `file:symbol`; paths are under `backend/app/` unless they start with `backend/`, `frontend/`, `evals/`, `data/` or `docs/`. Tests are in `backend/tests/`; a name that starts with `::` belongs to the last file named. Postman names are exact folder and request names in [docs/postman_collection.json](postman_collection.json).
 
-| ID | Requirement (from the brief) | Where | How to verify | Why | Status |
+| ID | Requirement (from the brief) | Where | How to verify | Why | Built in |
 |---|---|---|---|---|---|
-| R1 | Accept a user objective through an API or CLI | `api/runs.py`, `cli.py`, `harness/runner.py` | AC-1: `test_api.py::test_create_run_returns_202`, `::test_invalid_body_returns_422`, `test_cli.py::test_cli_run_visible_in_api`; Postman "Create run that asks for an incident", "Invalid body is rejected (422)" | [0001](adr/0001-backend-python-fastapi.md) | M3 |
-| R2 | Support an LLM–tool execution loop | `harness/loop.py`, `harness/llm_gateway.py`, `harness/tool_gateway.py` | AC-2: `test_loop.py::test_success_run_completes`; UI timeline | [0002](adr/0002-agent-loop-langgraph-custom-nodes.md) | M1, M2 |
-| R3 | Validate tool inputs and outputs | `tools/registry.py`, `harness/tool_gateway.py` | AC-3, AC-12: `test_tools.py::test_invalid_args_not_executed`, `::test_bad_output_not_retried`, `::test_long_output_truncated`, `test_approval.py::test_invalid_incident_args_ask_no_approval` | [0010](adr/0010-failure-handling-envelope-retry-repair.md) | M1, M3 |
-| R4 | Maintain agent state and execution history | `harness/store.py`, `harness/state.py`, LangGraph checkpointer | AC-4, AC-16: `test_loop.py::test_state_survives_restart`, `test_api.py::test_run_detail_has_history`, `test_recovery.py::*` | [0004](adr/0004-state-and-database-sqlite.md), [0013](adr/0013-recovery-interrupted-runs.md) | M1, M3 |
-| R5 | Handle tool errors, timeouts, retries and malformed LLM responses | `harness/tool_gateway.py`, `harness/retry.py`, `harness/llm_gateway.py` | AC-5–AC-7: `test_failures.py::*`, `test_llm_gateway.py::*`; Postman folder "3. Failure and limit demos" | [0010](adr/0010-failure-handling-envelope-retry-repair.md), [0012](adr/0012-fault-injection-per-run.md) | M1 |
-| R6 | Prevent infinite loops using step or time limits | `harness/policy.py`, guard node in `harness/loop.py`, segment timeout in `harness/runner.py` | AC-8: `test_limits.py::*`; Postman "Step limit (max_steps = 2)" | [0011](adr/0011-execution-limits.md) | M1, M3 |
-| R7 | Require user approval before calling `create_incident` | approval node in `harness/loop.py`, decisions in `harness/runner.py`, `api/runs.py` | AC-9, AC-10: `test_approval.py::*`, `test_loop.py::test_incident_call_pauses_run_without_incident`, `test_tools.py::test_incident_needs_decision`; Postman folder "1. Demo flow: create → approve → trace" | [0009](adr/0009-human-approval-interrupt.md) | M1, M3 |
-| R8 | Produce logs or traces for each execution | `harness/tracer.py`, `log.py`, `GET /api/runs/{id}/events`, `/trace` | AC-11: `test_tracing.py::*`, `test_api.py::test_sse_*`, `::test_trace_export`; Postman "Trace" | [0014](adr/0014-observability-trace-events.md) | M1, M3 |
-| R9 | Tests for success, tool failure, approval and execution limits | `backend/tests/`, `evals/` | `uv run pytest -q`; AC-18: `evals/run.sh`; CI workflow | [0017](adr/0017-docs-postman-ci.md) | M1–M5 |
-| R10 | Mock implementations of the three tools | `tools/kb.py`, `tools/status.py`, `tools/incident.py`, `data/` | AC-12: `test_tools.py::test_tool_schemas_exposed`, `test_api.py::test_tools_listed`; Postman "Tools" | [0003](adr/0003-llm-openai-compatible-with-fake.md) | M1, M2 |
-| R11 | Clear instructions to run and test | [README.md](../README.md), section 1 above | AC-17: follow the README from a clean clone | [0017](adr/0017-docs-postman-ci.md) | M5 |
-| R12 | UI demo that shows a run live | `frontend/` | AC-13: `trace.spec.ts`, `approval-inbox.spec.ts`; section 4 scenarios in the UI | [0015](adr/0015-ui-run-console-not-chat.md), [0016](adr/0016-ui-angular.md) | M4 |
-| R13 | Design document | [docs/DESIGN.md](DESIGN.md) | AC-17: approach, database design, stack, env vars, limitations, future work | [0017](adr/0017-docs-postman-ci.md) | Done |
-| R14 | Postman collection | [docs/postman_collection.json](postman_collection.json) | AC-17: newman run of folder 1 | [0017](adr/0017-docs-postman-ci.md) | Done (checked against the API in M5) |
-| R15 | Plan with tasks, estimates and milestones | [plans/README.md](../plans/README.md), `plans/m*.md` | AC-17: tasks with estimates and proof per milestone | [0018](adr/0018-adopt-ai-sdlc-workflow.md) | Done |
-| R16 | Hybrid retrieval for `search_knowledge_base` (added) | `kb/`, `tools/kb.py` | AC-14: `test_kb.py::*`, `test_api.py::test_health_reports_kb_mode` | [0005](adr/0005-kb-search-hybrid-rag.md)–[0007](adr/0007-embeddings-api-sparse-fallback.md) | M2 |
-| R17 | Quality measured with RAGAS (added) | `eval/`, `evals/kb_golden.jsonl` | AC-15: `test_eval.py::*`; Postman folder "5. Evaluation"; UI Evaluation tab | [0008](adr/0008-evaluation-ragas-offline-online.md) | M2, M3 |
-| R18 | Decisions recorded as ADRs (added) | [docs/adr/](adr/README.md) | AC-17: every decision in the spec links to an ADR | [0000](adr/0000-record-architecture-decisions.md) | Done |
-| R19 | This review guide (added) | this file | AC-17: every row points to an existing file and a passing test or manual step | [0018](adr/0018-adopt-ai-sdlc-workflow.md) | Skeleton; checked in M5 |
+| R1 | Accept a user objective through an API or CLI | `api/runs.py:create_run`, `cli.py:cmd_run`, `harness/runner.py:Runner.create_run` | AC-1: `test_api.py::test_create_run_returns_202`, `::test_invalid_body_returns_422`, `::test_faults_refused_when_disabled`, `test_cli.py::test_cli_run_visible_in_api`; Postman "Create run that asks for an incident", "Invalid body is rejected (422)" | [0001](adr/0001-backend-python-fastapi.md) | M1, M3 |
+| R2 | Support an LLM–tool execution loop | `harness/loop.py:build_graph`, `harness/llm_gateway.py:next_reply`, `harness/tool_gateway.py:execute` | AC-2: `test_loop.py::test_success_run_completes`, `::test_tool_attempts_and_incidents_in_checkpoint`, `test_llm_gateway.py::test_llm_event_lists_calls_with_args`; the UI timeline | [0002](adr/0002-agent-loop-langgraph-custom-nodes.md) | M1, M2, M4 |
+| R3 | Validate tool inputs and outputs | `tools/registry.py:TOOLS`, `harness/tool_gateway.py:check_input`, `harness/policy.py:check_calls` | AC-3, AC-12: `test_tools.py::test_invalid_args_not_executed`, `::test_unknown_tool_refused`, `::test_bad_output_not_retried`, `::test_long_output_truncated`, `test_approval.py::test_invalid_incident_args_ask_no_approval`, `test_limits.py::test_validation_comes_before_limits` | [0010](adr/0010-failure-handling-envelope-retry-repair.md) | M1, M3 |
+| R4 | Maintain agent state and execution history | `harness/store.py:Store`, `harness/state.py:AgentState` (kept in LangGraph checkpoints), `harness/runner.py:Runner.recover` | AC-4, AC-16: `test_loop.py::test_state_survives_restart`, `test_api.py::test_run_detail_has_history`, `::test_run_detail_survives_restart`, `test_recovery.py::*`, `test_store.py::*` | [0004](adr/0004-state-and-database-sqlite.md), [0013](adr/0013-recovery-interrupted-runs.md) | M1, M3 |
+| R5 | Handle tool errors, timeouts, retries and malformed LLM responses | `harness/tool_gateway.py:execute`, `harness/retry.py:backoff`, `harness/llm_gateway.py:classify` | AC-5–AC-7: `test_failures.py::test_timeout_twice_then_success`, `::test_all_attempts_fail_run_continues`, `test_tools.py::test_transient_errors_retried_with_events`, `test_llm_gateway.py::test_malformed_reply_repaired`, `::test_third_malformed_reply_fails_run`, `::test_llm_unavailable_fails_run`, `::test_tool_call_ids_made_unique`; `evals/status-timeout-retry.json`, `evals/malformed-reply.json`; Postman folder "3. Failure and limit demos" | [0010](adr/0010-failure-handling-envelope-retry-repair.md), [0012](adr/0012-fault-injection-per-run.md) | M1 |
+| R6 | Prevent infinite loops using step or time limits | `harness/loop.py:guard`, `harness/policy.py:check_calls`, `harness/policy.py:recursion_limit`, `harness/runner.py:Runner._segment` (segment timeout) | AC-8: `test_limits.py::test_limits_clamped_to_config`, `::test_max_steps_stops_run`, `::test_max_tool_calls_blocks_extra_call`, `::test_repeat_call_blocked`, `::test_segment_timeout_ends_timed_out`, `::test_recursion_limit_ends_limit_exceeded`, `::test_approval_wait_not_counted`; `evals/step-limit.json`; Postman "Step limit (max_steps = 2)" | [0011](adr/0011-execution-limits.md) | M1, M3 |
+| R7 | Require user approval before calling `create_incident` | `harness/loop.py:needs_approval`, `harness/loop.py:approval`, `harness/runner.py:Runner.decide`, `api/runs.py:decide`, `auth.py:require_approver` | AC-9, AC-10: `test_approval.py::test_incident_not_created_before_approval`, `::test_approve_creates_one_incident`, `::test_reject_sends_reason_to_llm`, `::test_edit_uses_new_args`, `::test_second_decision_conflicts`, `::test_incident_cap_blocks_without_approval`, `::test_invalid_edit_keeps_approval_pending`, `::test_expired_approval_rejects`, `::test_cancel_closes_pending_approval`, `test_failures.py::test_timeout_after_commit_creates_one_incident`, `test_loop.py::test_incident_call_pauses_run_without_incident`, `test_tools.py::test_incident_needs_decision`, `test_api.py::test_approver_token_required`; `evals/approve-incident.json`, `evals/prompt-injection.json`, `evals/timeout-after-commit.json`; Postman folder "1. Demo flow: create → approve → trace" | [0009](adr/0009-human-approval-interrupt.md) | M1, M3 |
+| R8 | Produce logs or traces for each execution | `harness/tracer.py:Tracer.emit`, `log.py:JsonFormatter`, `api/runs.py:run_events`, `api/runs.py:get_trace` | AC-11: `test_tracing.py::test_events_cover_every_step`, `::test_one_done_event_per_run`, `::test_secrets_masked`, `::test_log_line_is_json_with_run_id`, `test_api.py::test_sse_replays_then_streams`, `::test_sse_resumes_after_last_event_id`, `::test_sse_closes_after_done`, `::test_trace_export`, `::test_audit_event_for_state_changes`, `::test_usage_sums_llm_tokens`; Postman "Trace" | [0014](adr/0014-observability-trace-events.md) | M1, M3 |
+| R9 | Tests for success, tool failure, approval and execution limits | `backend/tests/`, `evals/run.sh`, `evals/check.sh`, [ci.yml](../.github/workflows/ci.yml) | `uv run pytest -q -m "not live"`; AC-18: `evals/run.sh` (`7 passed, 0 failed`), `test_scenarios.py::test_check_sh_fails_on_each_mismatch`; the CI jobs on the pull request | [0017](adr/0017-docs-postman-ci.md) | M1–M5 |
+| R10 | Mock implementations of the three tools | `tools/kb.py:search_knowledge_base`, `tools/status.py:get_service_status`, `tools/incident.py:create_incident`, `data/services.json`, `data/kb/` | AC-12: `test_tools.py::test_tool_schemas_exposed`, `::test_status_returns_fixture_record`, `::test_unknown_service_not_found`, `test_api.py::test_tools_listed`; Postman "Tools" | [0003](adr/0003-llm-openai-compatible-with-fake.md) | M1, M2 |
+| R11 | Clear instructions to run and test | [README.md](../README.md), section 1 above | AC-17: the README followed from a clean copy (M5 T4 log); `test_docs.py::test_doc_links_resolve` | [0017](adr/0017-docs-postman-ci.md) | M5 |
+| R12 | UI demo that shows a run live | `frontend/src/app/trace.ts:TraceStore`, `frontend/src/app/runs-page.ts:RunsPage`, `frontend/src/app/approval-inbox.ts:ApprovalInbox`, `frontend/src/app/flow-diagram.ts:FlowDiagram`, `backend/app/main.py:serve_ui` | AC-13: `trace.spec.ts`, `approval-inbox.spec.ts`, `flow-diagram.spec.ts`, `runs-page.spec.ts`, `test_skeleton.py::test_built_ui_served_after_api_routes`; the UI check in section 4 | [0015](adr/0015-ui-run-console-not-chat.md), [0016](adr/0016-ui-angular.md) | M4, M5 |
+| R13 | Design document | [docs/DESIGN.md](DESIGN.md) | AC-17: approach, database design, stack, environment variables, limitations, future work | [0017](adr/0017-docs-postman-ci.md) | M0, M5 |
+| R14 | Postman collection | [docs/postman_collection.json](postman_collection.json) | AC-17: newman runs folder 1 in the CI `e2e` job; the whole collection passed against the API in M5 T4 | [0017](adr/0017-docs-postman-ci.md) | M0, M3, checked in M5 |
+| R15 | Plan with tasks, estimates and milestones | [plans/README.md](../plans/README.md), `plans/m*.md` | AC-17: tasks with estimates, a Proof table and a Pipeline log per milestone | [0018](adr/0018-adopt-ai-sdlc-workflow.md) | M0 |
+| R16 | Hybrid retrieval for `search_knowledge_base` (added) | `kb/qdrant.py:KnowledgeBase.search`, `kb/qdrant.py:rrf`, `kb/sparse.py:query_vector`, `kb/ingest.py:ingest` | AC-14: `test_kb.py::test_exact_term_found_by_bm25`, `::test_paraphrase_found_by_dense` (a `live` test: it runs when an embedding endpoint answers), `::test_sparse_only_when_embeddings_down`, `::test_ingest_skips_unchanged`, `test_api.py::test_health_reports_kb_mode`; `evals/degraded-search.json`; numbers in [ADR 0005](adr/0005-kb-search-hybrid-rag.md#validation) | [0005](adr/0005-kb-search-hybrid-rag.md)–[0007](adr/0007-embeddings-api-sparse-fallback.md) | M2 |
+| R17 | Quality measured with RAGAS (added) | `eval/golden.py:run_golden`, `eval/online.py:evaluate_run`, `eval/metrics.py:RagasJudge`, `api/eval.py:eval_kb`, `evals/kb_golden.jsonl` | AC-15: `test_eval.py::test_golden_report_has_all_modes`, `::test_online_scores_stored_after_run`, `::test_low_score_emits_warn`, `::test_judge_down_gives_null_and_run_unchanged`, `test_api.py::test_eval_endpoint_streams_report`, `::test_eval_without_kb_returns_503`, `eval-tab.spec.ts`; Postman folder "5. Evaluation"; the UI Evaluation tab | [0008](adr/0008-evaluation-ragas-offline-online.md) | M2, M3, M4 |
+| R18 | Decisions recorded as ADRs (added) | [docs/adr/](adr/README.md) | AC-17: every decision in the spec links to an ADR, and `test_docs.py::test_doc_links_resolve` checks that each link resolves | [0000](adr/0000-record-architecture-decisions.md) | M0 |
+| R19 | This review guide (added) | this file, `backend/tests/test_docs.py:test_review_guide_symbols_exist` | AC-17: `test_docs.py::test_review_guide_tests_exist`, `::test_review_guide_symbols_exist` | [0018](adr/0018-adopt-ai-sdlc-workflow.md) | M5 |
 
 ## 3. Evaluation criteria
 
@@ -61,18 +62,18 @@ Paths are under `backend/app/` unless shown otherwise. Postman names are exact f
 - The loop as a graph and why each node exists: [spec, Agent loop](../specs/ops-agent-harness.md#agent-loop), [ADR 0002](adr/0002-agent-loop-langgraph-custom-nodes.md).
 - Run lifecycle and statuses, segments, locks: [spec, Run lifecycle](../specs/ops-agent-harness.md#run-lifecycle).
 - Where state lives and why: [DESIGN, Database design](DESIGN.md#3-database-design), [ADR 0004](adr/0004-state-and-database-sqlite.md).
-- Code: `harness/loop.py`, `harness/runner.py`, `harness/state.py`. Tests: `test_loop.py`, `test_recovery.py`.
+- Code: `harness/loop.py:build_graph`, `harness/runner.py:Runner`, `harness/state.py:AgentState`. Tests: `test_loop.py`, `test_recovery.py`, `test_lifecycle.py`.
 
 **Tool integration and validation**
 - Tool contracts (input, output, errors): [spec, Tools](../specs/ops-agent-harness.md#tools).
-- One gateway for every call: validation, timeout, retry, idempotency, envelope. Code: `harness/tool_gateway.py`, `tools/registry.py`.
+- One gateway for every call: validation, timeout, retry, idempotency, envelope. Code: `harness/tool_gateway.py:execute`, `tools/registry.py:TOOLS`.
 - Tests: `test_tools.py`, `test_failures.py`.
 
 **Error handling and safety controls**
 - Error model and retry rules: [spec, Tool results and errors](../specs/ops-agent-harness.md#tool-results-and-errors), [ADR 0010](adr/0010-failure-handling-envelope-retry-repair.md).
 - Limits in layers: [ADR 0011](adr/0011-execution-limits.md). Approval gate: [ADR 0009](adr/0009-human-approval-interrupt.md).
 - Every control in one table: [DESIGN, Safety controls](DESIGN.md#4-safety-controls).
-- Tests: `test_llm_gateway.py`, `test_limits.py`, `test_approval.py`; scenario evals in `evals/`.
+- Tests: `test_llm_gateway.py`, `test_limits.py`, `test_approval.py`; the scenario evals in section 4.
 
 **Code quality, observability and testing**
 - Trace events, live stream, JSON logs: [DESIGN, Observability](DESIGN.md#5-observability), [ADR 0014](adr/0014-observability-trace-events.md).

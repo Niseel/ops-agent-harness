@@ -166,3 +166,10 @@ Found in the M5 T4 review (2026-09-29), carry into any doc with measured numbers
 - Eval prose drifts kinder than the table: ADR 0005 said "dense ranks as well as hybrid" while dense MRR 1.00 > hybrid 0.97, and the one hybrid rank-2 is the paraphrase question the prose sells as a hybrid win (BM25's wrong top pulled into RRF first). Check each sentence against the report rows (`sqlite3 -readonly data/harness.db "select rows_json from eval_reports where id=..."`, rows have `rr@10`, `mode_used`, `retrieved_doc_ids`). Unit tests use `FakeEmbedder` (hashed bag of words), so they never show hybrid beating real dense. Keyword-overlap claims ("no shared keywords"): check with `app.kb.sparse.tokens` on query and doc (no stop words, no stemming), not by eye.
 - `main.py` mounts the built UI at import (`UI_DIR.is_dir()`): an API started before `npm run build` serves no UI until restarted. Check README order.
 - Scratch API that mimics CI without touching the owner's `ops_kb`: copy config.yaml with another `kb.collection`, `CONFIG_PATH=<copy> EMBED_BASE_URL=JUDGE_BASE_URL=http://127.0.0.1:9/v1`, then DELETE that collection after.
+
+Found in the M5 T5 review (2026-09-29), carry into any review-guide or docs-test change:
+
+- A `file:symbol` can exist and still point one hop off: R6 named `Runner.run_segment` for the segment timeout, which lives in `Runner._segment` (shared with `continue_run`). Open each symbol and find the line that does what the row says.
+- Replacing `test_x.py::*` with hand-picked names silently drops AC bullets (R7 lost AC-9 expiry/cancel and AC-10 idempotency, R6 lost the clamp test). Diff the row's test list against the plans' Proof rows for every AC bullet the row claims.
+- `test_docs.py` Python symbol regex `^\s*name\s*[:=]` matches keyword-argument lines (`run_id=run_id,`), so `runner.py:Runner.run_id` passes; the dotted class part is never checked. Probe with `tests.test_docs._defines(path, name)`.
+- `Built in` values: map a test to its milestone with `git grep -q "def name(" <merge-sha>` over the first-parent merges (git grep ERE has no `\b`).
