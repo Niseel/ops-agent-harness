@@ -10,7 +10,8 @@ How the work in [specs/ops-agent-harness.md](../specs/ops-agent-harness.md) is s
 | [m3-approval-api-cli](m3-approval-api-cli.md) | `feat/m3-approval-api-cli` | Approval decisions, REST API with live events, recovery, CLI | 6 | 5.5h | done |
 | [m4-ui](m4-ui.md) | `feat/m4-ui` | Run console UI | 6 | 5.5h | done |
 | [m5-ship](m5-ship.md) | `chore/m5-ship` | Docker, CI, scenario evals, final docs and review guide | 5 | 4h | done |
-| **Total** | | | **35** | **34.5h** | |
+| [m6-ui-upgrade](m6-ui-upgrade.md) | `feat/m6-ui-upgrade` | One-screen Runs tab, colours per actor, who-is-working and result panels, guided tour, paced fake LLM | 6 | 6h | done |
+| **Total** | | | **41** | **40.5h** | |
 
 ## Where each acceptance criterion is built
 
@@ -19,7 +20,7 @@ How the work in [specs/ops-agent-harness.md](../specs/ops-agent-harness.md) is s
 | AC-1 | M3 | AC-10 | M1 (idempotency), M3 (incident cap) |
 | AC-2 | M1, completed in M2 | AC-11 | M1 (events, logs), M3 (SSE, audit) |
 | AC-3 | M1, M3 (no approval asked) | AC-12 | M1 (tools), M2 (search tool), M3 (`GET /api/tools`) |
-| AC-4 | M1, M3 (API) | AC-13 | M4 |
+| AC-4 | M1, M3 (API) | AC-13 | M4, M6 |
 | AC-5 | M1 | AC-14 | M2, M3 (health) |
 | AC-6 | M1 | AC-15 | M2, M3 (endpoints) |
 | AC-7 | M1 | AC-16 | M3 |

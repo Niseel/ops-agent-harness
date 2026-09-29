@@ -2,6 +2,7 @@ import json
 import logging
 
 import pytest
+import yaml
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
@@ -45,6 +46,14 @@ def test_relative_paths_resolve_from_repo_root(monkeypatch):
 def test_config_rejects_unknown_keys():
     with pytest.raises(ValidationError):
         Config.model_validate({"limits": {"max_stepz": 3}})
+
+
+def test_config_checks_the_fake_llm_delay():
+    for bad in ([500, 300], [-1, 5]):
+        with pytest.raises(ValidationError, match="fake_delay_ms"):
+            Config.model_validate({"llm": {"fake_delay_ms": bad}})
+    shipped = Config.model_validate(yaml.safe_load((ROOT / "config.yaml").read_text()))  # cfg is patched to (0, 0)
+    assert shipped.llm.fake_delay_ms == (300, 500)
 
 
 def test_json_log_has_run_fields_and_masks_secrets(capsys):

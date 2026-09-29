@@ -111,6 +111,8 @@ The knowledge base lives in Qdrant, collection `ops_kb`: one point per runbook s
 
 Every node step, LLM call, tool attempt, retry, approval, evaluation and state-changing API call emits an event `{seq, run_id, t_ms, kind, node, tool, status, attention, msg, data}`. Events are stored in `events`, streamed live (`GET /api/runs/{id}/events`), exported (`GET /api/runs/{id}/trace`) and written to stdout as JSON log lines with `run_id`. `t_ms` is Unix epoch milliseconds; `created_at` holds the same moment in ISO-8601 UTC; the UI computes relative times. Each LLM call also records the model, a hash of the system prompt, token counts, latency and the calls it proposed, and the run detail sums the tokens. `attention` marks what a person should look at; the UI turns it into colour, icon and text ([ADR 0014](adr/0014-observability-trace-events.md)).
 
+The UI infers who is working from the events it already gets: a `stage` event of node `agent` starts an LLM turn; a `tools` stage after an `llm` reply starts its first call, and each final `tool` event hands over to the next call; a tool's `retry` event carries the wait before the next attempt, and an LLM `retry` shows the LLM thinking again with its attempt; a `pending` approval waits for a person; anything else is the harness between steps. No event marks a start, so a second attempt shows from its `retry` event. The mock tools answer in milliseconds, so the harness shows mostly during retries and timeouts, and a person during approvals; a `latency` fault slows one tool down.
+
 ## 6. API
 
 The routes, request bodies, status codes and errors are defined once, in the [spec's API table](../specs/ops-agent-harness.md#api). [docs/postman_collection.json](postman_collection.json) has a ready request for each route and the create → approve → trace flow.
@@ -119,7 +121,7 @@ The routes, request bodies, status codes and errors are defined once, in the [sp
 
 Two sources ([backend/app/config.py](../backend/app/config.py)):
 
-- **`config.yaml`**, behaviour, versioned with the code: limits, retries, timeouts per tool, search, approval TTL, output size, evaluation. Unknown keys stop the app at startup.
+- **`config.yaml`**, behaviour, versioned with the code: limits, retries, timeouts per tool, search, approval TTL, output size, evaluation, and the fake LLM's wait before each reply. Unknown keys stop the app at startup.
 - **Environment variables** (or `.env`, see [.env.example](../.env.example)), deployment: endpoints, keys, paths. Relative paths are resolved from the repo root.
 
 | Variable | Default | Purpose |
@@ -158,13 +160,14 @@ Two sources ([backend/app/config.py](../backend/app/config.py)):
 - **Search needs services.** Hybrid search needs Qdrant and an embedding endpoint; without embeddings it falls back to BM25. There is no reranker.
 - **No PII handling.** Objectives, tool output and events are stored and sent to the configured models as they are. Use synthetic data or a local model.
 - **Prompt injection is only contained, not detected.** The approval gate stops the only side effect; nothing flags injected text.
-- **Fake LLM.** `FakePlanner` follows fixed rules to show the harness mechanics, not model quality. Some local models write tool calls as text; those are not parsed.
+- **Fake LLM.** `FakePlanner` follows fixed rules to show the harness mechanics, not model quality. Some local models write tool calls as text; those are not parsed. It waits 300–500 ms before each reply (`llm.fake_delay_ms`), so a run can be followed in the UI; `[0, 0]` removes the wait.
 - **Evaluation quality.** RAGAS scores depend on the judge model; the golden set has 16 questions.
 - **Manual recovery.** Runs interrupted by a crash wait for someone to resume them.
 - **One process drives a run.** The per-run lock lives in memory. A CLI run decided through the API continues in the API process, and starting the API while a CLI run is `running` marks it `interrupted`.
 - **Live streams and shutdown.** uvicorn waits for open connections before it stops; the run command passes `--timeout-graceful-shutdown 5`, so an open event stream cannot hold it.
 - **The judge must answer in plain JSON.** Reasoning models (for example `qwen3.5-9b` in LM Studio) put their answer in a separate reasoning field and leave the content empty, so RAGAS gets nothing to parse. Use a non-reasoning model for `JUDGE_MODEL`, or turn thinking off.
 - **UI refresh.** The open run updates live. The runs list, the approval inbox and the open run's summary refresh every 5 s and on the open run's approval and done events, so an approval of another run can take 5 s to appear. The UI has no cancel or resume button; use the API or the CLI.
+- **UI layout.** From 1200×640 CSS pixels up the Runs tab fits the window and each panel scrolls inside; smaller windows stack the panels, the page scrolls and the Now panel stays at the top.
 - **Docker.** `docker compose --profile app up --build` runs the API and the built UI on :8000 next to Qdrant, both published on 127.0.0.1 only (the API has no authentication). Inside the container `localhost` is the container, so with the default settings the Docker demo runs the fake LLM, BM25-only search and no online evaluation. The container reads the host's `.env` too; only `QDRANT_URL` and `DB_PATH` are replaced. So `LLM_DEFAULT`, `DATA_DIR` and `CONFIG_PATH` set there apply in the container: keep the paths relative. To use LM Studio from the container, set `LLM_BASE_URL`, `EMBED_BASE_URL` and `JUDGE_BASE_URL` to `http://host.docker.internal:1234/v1` in `.env` (Docker Desktop); a host API reads the same file, so run one or the other. The container and a host API share Qdrant's `ops_kb` collection. After editing `data/kb`, rebuild the image: otherwise the container indexes its older copy without dense vectors, and search is `sparse_only` until a host API starts again and re-indexes.
 - **Crash between a write and its event.** A crash right after an approval row or a final row is written can leave it without its `approval` or `done` event. The approval still appears in the approvals list, and the event stream ends on a final run row.
 

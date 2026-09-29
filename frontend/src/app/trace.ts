@@ -3,6 +3,7 @@
 // ponytail: every view is recomputed per event; fine for the hundreds of events a run has.
 import { computed, signal } from '@angular/core';
 import { Envelope, TraceEvent } from './api';
+import { FLOW, Role } from './flow';
 
 export interface ProposedCall {
   id: string;
@@ -34,6 +35,14 @@ export interface Now {
   tool?: string;
   args?: unknown;
   attempt?: number;
+}
+
+/** Who is working now, and on what (plan M6, "Now panel: who is working"). */
+export type Actor = 'llm' | 'harness' | 'person' | 'none';
+
+export interface Activity {
+  actor: Actor;
+  text: string;
 }
 
 export interface Used {
@@ -101,6 +110,33 @@ export function attentionStyle(
       };
     default:
       return null;
+  }
+}
+
+const ROLES = new Map(FLOW.nodes.map((node) => [node.id, node.role]));
+
+/** Who acts in an event: the role of its flow node, or the harness for events without one (log, eval, error). */
+export function roleOf(event: TraceEvent): Role {
+  const node = nodeOf(event);
+  return (node && ROLES.get(node)) || 'harness';
+}
+
+/** Colour, icon and word for a run's status in the runs list; none while it runs. The word is the status. */
+export function runStatusStyle(status: string): AttentionStyle | null {
+  switch (status) {
+    case 'completed':
+      return { colour: 'green', icon: '✔', word: status };
+    case 'failed':
+    case 'limit_exceeded':
+    case 'timed_out':
+      return { colour: 'red', icon: '✖', word: status };
+    case 'cancelled':
+      return { colour: 'blue', icon: 'ℹ', word: status };
+    case 'awaiting_approval':
+    case 'interrupted':
+      return { colour: 'amber', icon: '⚠', word: status };
+    default:
+      return null; // running
   }
 }
 
@@ -252,6 +288,70 @@ export class TraceStore {
     }
     return { text: findLast(events, (e) => e.kind !== 'log' && e.kind !== 'eval')?.msg ?? '' };
   });
+
+  /**
+   * Who is working, inferred from the events the UI already gets: no event marks a start, so each rule reads the
+   * latest events. First rule that holds wins.
+   */
+  readonly activity = computed<Activity>(() => {
+    const events = this.list();
+    if (!events.length) return { actor: 'none', text: 'Waiting for the first event' };
+    const done = this.done();
+    if (done) return { actor: 'none', text: done.msg ?? 'done' };
+    const approval = findLast(events, (e) => e.kind === 'approval');
+    if (approval?.status === 'pending') {
+      const tool = approval.tool ?? approval.data?.tool;
+      return { actor: 'person', text: `must approve, edit or reject ${tool} in Approvals` };
+    }
+    const running = this.running();
+    if (running) {
+      const tool = running.call.name;
+      const attempt = (running.last?.data?.attempt ?? 0) + 1;
+      const about = findLast(events, (e) => e.data?.tool_call_id === running.call.id);
+      // A retry waits only after an attempt since the latest start; an older one belongs to a segment before a resume.
+      if (running.last && about?.kind === 'retry') {
+        const wait = Number(about.data?.delay_s ?? 0).toFixed(2);
+        return {
+          actor: 'harness',
+          text: `waits ${wait} s, then runs ${tool} again (attempt ${attempt})`,
+        };
+      }
+      return { actor: 'harness', text: `runs ${tool} (attempt ${attempt})` };
+    }
+    const latest = findLast(events, (e) => nodeOf(e) !== null);
+    const turn =
+      (findLast(events, (e) => e.kind === 'stage' && e.node === 'guard')?.data?.steps ?? 0) + 1;
+    if (latest?.kind === 'stage' && latest.node === 'agent')
+      return { actor: 'llm', text: `is thinking (turn ${turn})` };
+    if (latest?.kind === 'retry' && latest.node === 'agent')
+      return {
+        actor: 'llm',
+        text: `is thinking (turn ${turn}, attempt ${(latest.data?.attempt ?? 0) + 1})`,
+      };
+    if (latest?.kind === 'llm') return { actor: 'harness', text: "checks the LLM's reply" };
+    if (latest?.kind === 'stage' && latest.node === 'guard')
+      return { actor: 'harness', text: `checks the limits: ${latest.msg ?? ''}` };
+    if (latest?.kind === 'stage' && latest.node === 'finalize')
+      return { actor: 'harness', text: 'finishes the run' };
+    if (latest?.kind === 'approval')
+      return {
+        actor: 'harness',
+        text: `continues after the decision on ${latest.tool ?? latest.data?.tool}`,
+      };
+    if (latest?.kind === 'tool')
+      return { actor: 'harness', text: `has the result of ${latest.tool}` };
+    if (!latest) return { actor: 'harness', text: 'starts the run' }; // only the audit log so far
+    return { actor: 'harness', text: `is working: ${latest.msg ?? latest.kind}` };
+  });
+
+  /** The LLM's latest decision: a reply with tool calls, a final answer, or a malformed reply. */
+  readonly lastReply = computed(
+    () =>
+      findLast(
+        this.list(),
+        (e) => e.kind === 'llm' && ['tool_calls', 'final', 'malformed'].includes(e.status ?? ''),
+      ) ?? null,
+  );
 
   /** The latest event per flow node. */
   readonly nodes = computed<Record<string, TraceEvent>>(() => {

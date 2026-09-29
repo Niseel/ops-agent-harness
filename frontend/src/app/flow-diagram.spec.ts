@@ -60,6 +60,15 @@ describe('FLOW', () => {
     expect(FLOW.edges.length).toBe(16);
   });
 
+  it('fits a viewBox of at most 900×170, with every node inside it', () => {
+    expect(FLOW.width).toBeLessThanOrEqual(900);
+    expect(FLOW.height).toBeLessThanOrEqual(170);
+    const outside = FLOW.nodes.filter(
+      (n) => n.x < 0 || n.y < 0 || n.x + NODE_W > FLOW.width || n.y + NODE_H > FLOW.height,
+    );
+    expect(outside).toEqual([]);
+  });
+
   it('places no node over another', () => {
     const overlaps = FLOW.nodes.flatMap((a, i) =>
       FLOW.nodes
@@ -88,6 +97,35 @@ describe('FlowDiagram', () => {
       g.getAttribute('data-node'),
     );
     expect(active).toEqual(['get_service_status']);
+  });
+
+  it("gives each node its role's class and names the roles in a legend", async () => {
+    const root = await render({}, 'agent');
+    const role = (id: string) =>
+      root
+        .querySelector(`g[data-node="${id}"]`)
+        ?.getAttribute('class')
+        ?.match(/role-(\w+)/)?.[1];
+    expect(FLOW.nodes.map((n) => [n.id, role(n.id)])).toEqual(
+      FLOW.nodes.map((n) => [n.id, n.role]),
+    );
+    expect(['agent', 'guard', 'approval', 'kb.rrf'].map(role)).toEqual([
+      'llm',
+      'harness',
+      'person',
+      'tool',
+    ]);
+    expect(root.querySelector('g[data-node="agent"]')?.classList.contains('active')).toBe(true);
+    const legend = [...root.querySelectorAll('.legend span')].map((s) => [
+      s.textContent?.trim(),
+      s.className,
+    ]);
+    expect(legend).toEqual([
+      ['LLM', 'role-llm'],
+      ['Harness', 'role-harness'],
+      ['Tool', 'role-tool'],
+      ['Person', 'role-person'],
+    ]);
   });
 
   it('shows the icon, status and colour of a node with attention', async () => {

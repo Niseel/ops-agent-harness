@@ -7,6 +7,9 @@
   --muted: #5f6b76;
   --border: #d9dee3;
   --accent: #2f5bd3;
+  --llm: #8250df;
+  --harness: #0e7490;
+  --tool: #bf3989;
   --amber: #9a6700;
   --orange: #bc4c00;
   --red: #c62828;
@@ -29,6 +32,9 @@
     --muted: #9aa5b1;
     --border: #2e353d;
     --accent: #7ea2ff;
+    --llm: #d2a8ff;
+    --harness: #4fd1dc;
+    --tool: #f778ba;
     --amber: #e3b341;
     --orange: #f0883e;
     --red: #ff7b72;
@@ -121,9 +127,85 @@ pre {
   color: var(--green);
 }
 
+/* Actor colours: the LLM, the harness, the tools and the person (spec: UI, colours). Always with a word. */
+.role-llm {
+  --role: var(--llm);
+  color: var(--llm);
+}
+.role-harness {
+  --role: var(--harness);
+  color: var(--harness);
+}
+.role-tool {
+  --role: var(--tool);
+  color: var(--tool);
+}
+.role-person {
+  --role: var(--amber);
+  color: var(--amber);
+}
+
+/* A filled chip: panel-coloured text on the role colour, the same pair the contrast test checks. */
+.tag {
+  display: inline-block;
+  padding: 0 6px;
+  border-radius: 4px;
+  background: var(--role);
+  color: var(--panel);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+/* A left bar in a role or attention colour; the item's own text keeps --text. */
+[data-bar] {
+  border-left: 4px solid var(--bar);
+}
+[data-bar='llm'] {
+  --bar: var(--llm);
+}
+[data-bar='harness'] {
+  --bar: var(--harness);
+}
+[data-bar='tool'] {
+  --bar: var(--tool);
+}
+[data-bar='amber'] {
+  --bar: var(--amber);
+}
+[data-bar='orange'] {
+  --bar: var(--orange);
+}
+[data-bar='red'] {
+  --bar: var(--red);
+}
+[data-bar='blue'] {
+  --bar: var(--blue);
+}
+[data-bar='green'] {
+  --bar: var(--green);
+}
+.tint {
+  background: color-mix(in srgb, var(--bar) 4%, var(--panel)); /* light: amber keeps 4.5:1 on it */
+}
+
+/* A panel with a bar, for example the Result panel; beats the panel's own border. */
+.panel[data-bar] {
+  border-left: 4px solid var(--bar);
+}
+
+/* Approvals wait for a person: amber bar and heading. */
+.panel.waiting {
+  border-left: 4px solid var(--amber);
+}
+.panel.waiting h2 {
+  color: var(--amber);
+}
+
 /* Header and tabs */
 .app-header {
   display: flex;
+  flex-wrap: wrap; /* narrow windows: Help moves to a second row instead of off screen */
   align-items: center;
   gap: 16px;
   padding: 8px 16px;
@@ -139,6 +221,10 @@ pre {
 .tabs {
   display: flex;
   gap: 4px;
+}
+
+.help {
+  margin-left: auto;
 }
 
 .tabs button[aria-current='page'] {
@@ -167,7 +253,7 @@ main {
   margin: 0 0 8px;
 }
 
-/* Runs tab: ADR 0015's sketch. Left, center, right; bottom spans all three. */
+/* Runs tab: ADR 0015's sketch. Left, center, right; bottom spans all three. Stacked here, one screen below. */
 .console {
   display: grid;
   grid-template-columns: minmax(240px, 1fr) minmax(0, 2fr) minmax(240px, 1fr);
@@ -196,10 +282,136 @@ main {
   align-content: start;
 }
 
+.console .bottom {
+  display: grid;
+  gap: 12px;
+}
+
+.panel-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 8px;
+  margin-bottom: 6px;
+}
+
+.panel .panel-head h2 {
+  margin: 0;
+}
+
+/* Who is working stays in view while the page scrolls; focus scrolls below it, not under it. */
+html {
+  scroll-padding-top: 9.5rem;
+}
+
+.now {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  max-height: 9.5rem; /* matches the scroll padding above; long arguments scroll inside */
+  overflow: auto;
+}
+
 @media (max-width: 900px) {
+  /* One column. The center's panels join the column, so the Now panel sticks over the whole page. */
   .console {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-areas: 'left' 'center' 'right' 'bottom';
+    display: flex;
+    flex-direction: column;
+  }
+  .console .center {
+    display: contents;
+  }
+}
+
+/* One screen: the page does not scroll; each panel's list scrolls inside (spec, UI). */
+@media (min-width: 1200px) and (min-height: 640px) {
+  :root {
+    --header-h: 3rem;
+  }
+  body {
+    overflow: hidden;
+  }
+  .app-header {
+    height: var(--header-h);
+    padding-block: 0;
+  }
+  main {
+    height: calc(100dvh - var(--header-h));
+    padding: 8px 12px;
+  }
+  main > section {
+    height: 100%;
+  }
+  main > section[data-tab='eval'],
+  main > section[data-tab='incidents'] {
+    overflow: auto;
+  }
+  app-runs-page {
+    display: block;
+    height: 100%;
+  }
+  .console {
+    height: 100%;
+    grid-template-columns: minmax(13rem, 17%) minmax(0, 1fr) minmax(16rem, 21%);
+    grid-template-rows: minmax(0, 1fr) minmax(9rem, 22%);
+    gap: 8px;
+  }
+  .console > *,
+  .console .panel {
+    min-height: 0;
+  }
+  .console .stack {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .console .panel {
+    display: flex;
+    flex-direction: column;
+    overflow: auto; /* only when a panel is squeezed; its list scrolls first */
+  }
+  .console .fill {
+    flex: 1 1 0;
+    min-height: 6rem;
+  }
+  .console .now {
+    max-height: 35%;
+  }
+  .console .approvals {
+    max-height: 45%;
+  }
+  .console .approvals:has(.approval) {
+    max-height: 60%; /* a waiting decision keeps its buttons in view; budget and attention give way */
+    flex-shrink: 0;
+  }
+  .console .bottom {
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+    gap: 8px;
+  }
+  .runs,
+  .timeline,
+  .attention,
+  .console .console-lines,
+  .console .bottom pre {
+    flex: 1 1 0;
+    min-height: 0;
+    max-height: none;
+    overflow: auto;
+  }
+  .flow {
+    max-height: 14rem;
+  }
+  /* The legend sits beside the Flow heading, so the timeline keeps the height. */
+  .console .flow-panel {
+    position: relative;
+  }
+  .console .flow-panel .legend {
+    position: absolute;
+    top: 10px;
+    right: 12px;
+    margin: 0;
   }
 }
 
@@ -273,8 +485,17 @@ details[open] {
   white-space: nowrap;
 }
 
+/* Row 1: id and time; row 2: the status, whole (never colour alone); row 3: the objective. */
+.run-row .status {
+  grid-area: 2 / 1 / 3 / -1;
+}
+
+.run-row .time {
+  grid-area: 1 / 3;
+}
+
 .run-row .objective {
-  grid-column: 1 / -1;
+  grid-area: 3 / 1 / 4 / -1;
 }
 
 .run-row[aria-current='true'] {
@@ -291,6 +512,14 @@ details[open] {
 /* Timeline */
 .item code {
   word-break: break-word;
+}
+
+/* Arguments take one line in the timeline; the detail panel shows all of them. */
+.timeline .item > code,
+.timeline .item.call > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .item.call {
@@ -314,7 +543,9 @@ details[open] {
 /* Budget, attention, NOW bar, flow, console */
 .meter {
   display: grid;
-  gap: 2px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); /* label and meter on one row: a short Budget panel */
+  align-items: center;
+  column-gap: 8px;
 }
 
 meter {
@@ -335,6 +566,70 @@ meter {
   font-size: 13px;
 }
 
+/* Who is working: the actor's badge, filled in its colour, then what it does. */
+.now .activity {
+  margin-bottom: 4px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.actor {
+  margin-right: 6px;
+  padding: 1px 8px;
+  font-size: 12px;
+  vertical-align: 1px;
+}
+
+.actor .dot {
+  animation: blink 1s ease-in-out infinite alternate;
+}
+
+@keyframes blink {
+  to {
+    opacity: 0.25;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .actor .dot {
+    animation: none;
+  }
+}
+
+/* Result: the run's end, then its answer in a larger font. */
+.now .result-status {
+  margin-bottom: 4px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.now .result-error {
+  margin-bottom: 4px;
+}
+
+/* The status, error, incident and badges stay in view; a long answer scrolls on its own. */
+.now.result {
+  display: flex;
+  flex-direction: column;
+}
+
+.now .answer {
+  flex: 1 1 auto;
+  min-height: 3em; /* at least two lines stay visible; the panel scrolls for the rest */
+  overflow: auto;
+  margin: 4px 0 0;
+  font-size: 15px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.now .now-line,
+.now .last-choice {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .flow {
   width: 100%;
   height: auto;
@@ -346,20 +641,43 @@ meter {
   stroke-width: 1.5;
 }
 
+.flow .node {
+  color: var(--text); /* labels stay --text; only the stroke and the state line carry colour */
+}
+
 .flow .node rect {
   fill: var(--panel);
-  stroke: var(--border);
+  stroke: var(--role, var(--border));
   stroke-width: 1.5;
 }
 
 .flow .node.active rect {
-  stroke: var(--accent);
   stroke-width: 3;
+  fill: color-mix(in srgb, var(--role) 4%, var(--panel));
+  animation: pulse 1.2s ease-in-out infinite alternate;
+}
+
+@keyframes pulse {
+  to {
+    stroke-opacity: 0.35;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .flow .node.active rect {
+    animation: none;
+  }
+}
+
+.legend {
+  margin: 4px 0 0;
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .flow text {
   fill: currentColor;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .flow .node.active text:first-of-type {
@@ -367,11 +685,11 @@ meter {
 }
 
 .flow text.state {
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .console-lines {
-  max-height: 320px;
+  max-height: 320px; /* stacked layout; the one-screen layout lets the panel decide */
   overflow: auto;
 }
 
@@ -413,6 +731,9 @@ button[aria-pressed='true'] {
 
 .token {
   margin-bottom: 8px;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  column-gap: 8px;
 }
 
 .inbox {
@@ -429,6 +750,11 @@ button[aria-pressed='true'] {
   gap: 6px;
 }
 
+.approval pre {
+  max-height: 4.5rem; /* long arguments scroll, so the decision buttons stay in view */
+  overflow: auto;
+}
+
 .approval {
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -437,4 +763,96 @@ button[aria-pressed='true'] {
 
 .countdown {
   margin-left: auto;
+}
+
+/* Help tour: a modal dialog over the whole window; the ring dims everything but its target. */
+dialog.tour {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100dvh;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  overflow: hidden;
+}
+
+dialog.tour::backdrop {
+  background: transparent;
+}
+
+body:has(dialog.tour[open]) {
+  overflow: hidden;
+}
+
+.tour-ring {
+  position: fixed;
+  pointer-events: none;
+  border-radius: 8px;
+  outline: 3px solid var(--accent);
+  box-shadow: 0 0 0 100vmax rgb(0 0 0 / 0.4);
+  transition:
+    top 0.2s ease,
+    left 0.2s ease,
+    width 0.2s ease,
+    height 0.2s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tour-ring {
+    transition: none;
+  }
+}
+
+.tour-card {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(26rem, 100vw - 2rem);
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.25);
+}
+
+.tour-card[data-place='bottom'] {
+  bottom: 1rem;
+}
+
+.tour-card[data-place='top'] {
+  top: 1rem;
+}
+
+.tour-card[data-place='center'] {
+  top: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.tour-card .panel-head {
+  margin: 0;
+}
+
+.tour-card h2 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.tour-card p {
+  margin: 0;
+}
+
+.tour-card .row {
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.tour-card .row .muted {
+  margin-right: auto;
 }

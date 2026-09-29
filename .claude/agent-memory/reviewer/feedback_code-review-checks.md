@@ -173,3 +173,48 @@ Found in the M5 T5 review (2026-09-29), carry into any review-guide or docs-test
 - Replacing `test_x.py::*` with hand-picked names silently drops AC bullets (R7 lost AC-9 expiry/cancel and AC-10 idempotency, R6 lost the clamp test). Diff the row's test list against the plans' Proof rows for every AC bullet the row claims.
 - `test_docs.py` Python symbol regex `^\s*name\s*[:=]` matches keyword-argument lines (`run_id=run_id,`), so `runner.py:Runner.run_id` passes; the dotted class part is never checked. Probe with `tests.test_docs._defines(path, name)`.
 - `Built in` values: map a test to its milestone with `git grep -q "def name(" <merge-sha>` over the first-parent merges (git grep ERE has no `\b`).
+
+Found in the M6 T1 review (2026-09-29):
+
+- No pytest-timeout and no CI `timeout-minutes`: any test that awaits a queue or event with no bound (`await events.get()` in a `while` loop on `tracer.subscribe`) hangs the suite for GitHub's 6 h default when the awaited event never comes. Repo idiom is `asyncio.wait_for(..., 5)`. Probe: a scratch copy that patches `runner.run_segment` to raise before the stage event.
+- Pydantic lax mode on config tuples: `["300", "500"]` and `[True, 5]` coerce; consistent with other config keys (Strict only forbids extras), not a finding.
+
+Found in the M6 T2 review (2026-09-29), carry into T3-T6 (layout, Now/Result panel, tour):
+
+- A count-keyed scroll follower (`Follow`, `afterRenderEffect` on `events().length`) misses content that grows without a new event: the `done` item's final answer comes from the later detail refresh, so the timeline often stops 43 px short and hides the answer (probe: open a completed run 3x at 1200x640 and 1280x720, compare `scrollTop` with `scrollHeight - clientHeight`). Unit specs with fixed `scrollHeight` cannot show it.
+- `:root { font: 14px ... }` makes 1rem = 14 px, so the plan's rem values (6rem, 9rem, 13rem, 3rem header) are 14/16 of the planner's pixel arithmetic.
+- The Approvals panel capped at 45% hides Approve/Edit/Reject below its fold at 1280x720 with one approval (args `pre` is tall); macOS overlay scrollbars give no cue.
+- Chrome over CDP from a scratch `cdp.mjs` (Node global WebSocket, `--remote-debugging-port=9333 --user-data-dir=<scratch>`) against the scratch API on :8010 works; measure with `Runtime.evaluate`, crop screenshots with `sips -c H W --cropOffset Y X`. Rect-overlap checks for a sticky panel must test x overlap too (a sticky panel in the center column does not cover the right column).
+- Round 2 (T2 fix): a fixed `scroll-padding-top` (8rem) under a sticky panel with no height cap only works while the panel is short. The Now panel with a pending approval's long args is 162 px at 1000x700 and 181 px at 420 wide, so focused items are still covered 50-68 px. Probe with the pending run (long args), not a completed run. Pair a fixed padding with a matching `max-height` on the sticky panel.
+- `flex-shrink: 0` plus `max-height: 60%` on one panel of a flex column cannot overflow the column while the other panels have `min-height: 0` (or a small min); the cost moves to the shrinkable sibling (Budget lost its last meter at 1280x720 with an approval waiting). Measure the sibling's `scrollHeight` vs `clientHeight`, not only the column.
+- CDP probe gotchas: `querySelectorAll('.runs button, .runs li')` returns the `li` first (document order), and clicking it does nothing; zsh does not word-split `$s` in `set -- $s`. Chrome needs the sandbox disabled to bind its debugging port.
+
+Found in the M6 T3 review (2026-09-29), carry into T4-T6 (actor badge, Result panel, tour ring):
+
+- A palette test that checks tokens only on `--panel`/`--bg` misses text on tints: `color-mix(in srgb, X 8%, panel)` behind the same colour's word drops light amber to 4.39:1 (attention retry rows), and a 10% node tint to 4.22-4.47 for amber/orange/green and role colours. Tokens near 4.5 on white (amber 4.87, llm/tool 5.05) have no headroom for any tint. Compute every coloured-text-on-tint pair; ask for the test to mix too.
+- `.role-*` classes that set `color` on an SVG `g` recolour every `text` with `fill: currentColor` (labels and uncoloured state lines), not only the stroke.
+- A tester may mutate the working tree while you review (dark amber flipped, role classes gone, `cancelled` case removed, tests failing): wait until `git diff --stat` is back to the builder's numbers, then re-run.
+- Chrome over CDP on the scratch API: headless defaults to dark; `Emulation.setEmulatedMedia` `prefers-color-scheme: light` for the light theme; `getComputedStyle` gives `color(srgb r g b)` for `color-mix` results, feed those straight into the WCAG formula.
+- Round 2 (T3 fix): a stylesheet-scraping test that takes `max(N)` from one exact `color-mix(...)` pattern silently ignores any other form (another base, `oklab`, spacing). Ask for a guard: count of `color-mix(` equals count of matches. A fix that changes a planned number (tint 8% -> 4%, step 5 -> 4) leaves the plan's own body stale; grep the plan for the old value, not just the Pipeline log.
+
+Found in the M6 T4 review (2026-09-29), carry into T5/T6 (Result panel, tour):
+
+- TraceStore rules that look up "the latest event about call X" (`findLast` by `tool_call_id`) are not scoped to the latest `tools` stage, while `running` is. After a resume from `interrupted`, a pre-crash `retry` event is still "latest about" the re-run call, so text built on it ("waits ... again") is stale until the first new attempt. Guard: only trust it when `running.last` is set (an attempt since the latest start).
+- Each new line in the Now panel eats the stacked layout's fixed `max-height: 8rem` (112 px at 14 px rem): heading 27 + activity 26 + one mono NOW line 19 + last choice 23 + padding 22 = 116 px, so the last line hides under the fold once a NOW line shows (two lines at ~1100 px wide). Re-add the arithmetic whenever T5 or T6 add rows.
+- Launching headless Chrome with the sandbox disabled was refused by the permission classifier in this session; fall back to CSS arithmetic and ask the tester or builder to measure.
+
+Found in the M6 T5 review (2026-09-29), carry into T6 and any Now/Result panel change:
+
+- Fake LLM answers are one short line, so layout checks with the demo runs never show a real answer's size. Probe with a long answer: in the CDP script, set `now.querySelector('.answer').textContent = "...".repeat(30)` before measuring. T5's `.now.result { max-height: 45% }` (plan pins 35%) then took the timeline panel to its 6rem floor (list 35 px, below one 53 px done item) at 1280×720 and 1200×640, and the incident line and badges sat below the answer's fold.
+- `--headless=new --remote-debugging-port=<p> --user-data-dir=<scratch>` WITHOUT `--no-sandbox` works and is not refused (the earlier note about disabling the sandbox is not needed).
+- Backend order for `done`: `finish_run`/`cancel_run` write the final row before emitting `done`, so a detail read triggered by `done` is final; a "`…` until the detail is final" placeholder only sticks when that read fails, and the 5 s refresh timer heals it.
+- The timeline has only `llm`, `call` and `done` items (evals become badges), so "last timeline item is `done`" equals "the store holds `done`".
+- Round 2 (T5 fix): a flex child with `flex: 1 1 auto; min-height: 0` inside a capped panel (`max-height` + `overflow: auto`) shrinks to 0 px once its fixed siblings fill the cap; it is then invisible even after scrolling the panel. Stacked 9.5rem Now panel with error + incident + badges: "No final answer." at 0 px (1100×800, 420×800). Probe by injecting extra sibling lines (clone `.result-error`) before measuring; give the scroller a floor (`min-height: 2lh`/`3em`). Probe script: scratchpad `r2.mjs` (sizes loop, long-answer injection, per-line inView).
+
+Found in the M6 T6 review (2026-09-29), carry into any dialog, header or bundle change:
+
+- A `[disabled]` bound to the button that was just pressed (Back on reaching step 1) drops focus to `body` in Chrome (focus fixup), even inside a modal dialog; Tab then lands on the first dialog control. Probe with real CDP keys: `Input.dispatchKeyEvent` Enter needs `text: '\r'` or the button is not activated.
+- A new header button can push the header past narrow widths: `.app-header` is a no-wrap flex row; with Help, `scrollWidth` 397 at 360 wide (345 without). Measure `document.documentElement.scrollWidth` at 360 and 390 for any header addition.
+- Bundle growth: build base and head into the scratchpad (`git archive <sha> -- frontend | tar -x`, symlink node_modules, `ng build --output-path <scratch> --stats-json`), then diff `browser-stats.json` inputs by path normalised after `node_modules/` (the symlink changes the keys). T6's +15 kB: ~9.7 kB Angular core for the first `viewChild` signal query, 4.5 kB tour.ts.
+- `box-shadow: 0 0 0 100vmax` dimming paints up to 6000 CSS px wide and at DPR 2 (3840@2), but not at 7680×4320 CSS (Chrome 154 headless). Check with PIL (`uv run python` in backend has Pillow) on off/on screenshots, light theme.
+- `afterRenderEffect({write})` that reads layout works but breaks Angular's phase rule (write: never read); split `write` (scroll) and `read` (measure, set signal). Setting a signal the effect does not read is no loop.

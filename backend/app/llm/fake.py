@@ -4,12 +4,16 @@ FakePlanner follows fixed rules (plans/m1-harness-core.md, FakePlanner) and
 decides only from the messages and the offered tools. It makes one tool call
 per reply. It follows an instruction to open an incident found in search
 results on purpose: it imitates a model that falls for prompt injection, so
-the approval gate can be shown stopping it.
+the approval gate can be shown stopping it. It waits `llm.fake_delay_ms` before
+each reply, like a model's think time, so a person can follow a run.
 """
 
 import json
+import random
 import re
+from asyncio import sleep
 
+from app.config import cfg
 from app.llm.openai_compat import LLMReply, ToolCall
 
 _SERVICE = re.compile(r"^[a-z0-9][a-z0-9-]{1,49}$")
@@ -63,6 +67,9 @@ class FakePlanner:
     model = "fake"
 
     async def complete(self, messages: list[dict], tools: list[dict]) -> LLMReply:
+        low, high = cfg.llm.fake_delay_ms  # read per call: tests patch it
+        if high:
+            await sleep(random.uniform(low, high) / 1000)
         offered = {t["function"]["name"] for t in tools}
         objective = next((m["content"] for m in messages if m["role"] == "user"), "") or ""
         called, results = _history(messages)

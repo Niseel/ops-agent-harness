@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { ApprovalInbox } from './approval-inbox';
-import { RunsPage } from './runs-page';
+import { ERROR_TEXT, RunsPage } from './runs-page';
 import { TraceEvent } from './api';
 
 /** jsdom has no EventSource: a fake that records what the code does with it (mirrors api.spec.ts). */
@@ -78,6 +78,29 @@ describe('RunsPage', () => {
     vi.unstubAllGlobals();
   });
 
+  it('shows every panel with its empty text before a run is open', async () => {
+    stubFetch({});
+    const fixture = TestBed.createComponent(RunsPage);
+    await fixture.whenStable();
+    const root = fixture.nativeElement as HTMLElement;
+    const panel = (id: string) => root.querySelector(`#${id}`)?.closest('section')?.textContent;
+    expect(panel('now')).toContain('No run open. Start one on the left or pick one from the list.');
+    expect(root.querySelectorAll('app-flow-diagram g.node').length).toBe(12);
+    expect(root.querySelector('app-flow-diagram g.node.active')).toBeNull();
+    expect(panel('run-title')).toContain('Start a run or pick one from the list.');
+    expect(panel('console')).toContain('No events for this filter.');
+    expect(panel('detail')).toContain('Select a step to see its data.');
+    expect(panel('runs')).toContain('No runs yet.');
+    expect(panel('approvals')).toContain('Approvals (0)');
+    expect(panel('budget')).toContain('Open a run to see its budget.');
+    expect(panel('attention')).toContain('Nothing needs attention.');
+    // Center column from the top: Now, Flow, then the timeline; the bottom band holds console and detail.
+    const ids = (area: string) =>
+      [...root.querySelectorAll(`.${area} > section h2`)].map((h) => h.id);
+    expect(ids('center')).toEqual(['now', 'flow', 'run-title']);
+    expect(ids('bottom')).toEqual(['console', 'detail']);
+  });
+
   it('opening a run subscribes and renders timeline items as events arrive', async () => {
     stubFetch({ detail: () => ({ id: 'r1', status: 'running', options: { limits: {} } }) });
     const fixture = TestBed.createComponent(RunsPage);
@@ -114,6 +137,30 @@ describe('RunsPage', () => {
 
     expect(source.closed).toBe(true);
     expect(calls).toBeGreaterThan(callsBeforeDone);
+  });
+
+  it('keeps the timeline at its end when the final answer arrives after done', async () => {
+    let final: string | null = null;
+    stubFetch({
+      detail: () => ({ id: 'r1', status: 'completed', final, options: { limits: {} } }),
+    });
+    const fixture = TestBed.createComponent(RunsPage);
+    await fixture.whenStable();
+    fixture.componentInstance.open('r1');
+    await fixture.whenStable();
+    FakeEventSource.all.at(-1)!.send(ev('done', { status: 'completed' }));
+    await fixture.whenStable();
+
+    // The answer makes the done item taller; the event count stays the same.
+    const timeline = (fixture.nativeElement as HTMLElement).querySelector('ol.timeline')!;
+    Object.defineProperty(timeline, 'clientHeight', { configurable: true, value: 100 });
+    Object.defineProperty(timeline, 'scrollHeight', { configurable: true, value: 500 });
+    final = 'payments-api is degraded.';
+    await fixture.componentInstance.refresh();
+    await fixture.whenStable();
+
+    expect(timeline.textContent).toContain('payments-api is degraded.');
+    expect(timeline.scrollTop).toBe(500);
   });
 
   it('reads /trace after done when evaluate is true, and stops once the expected evals are in', async () => {
@@ -469,6 +516,222 @@ describe('RunsPage', () => {
     });
   });
 
+  describe('who is working', () => {
+    it('shows the actor as a word with its colour, what it does, and the last LLM choice', async () => {
+      stubFetch({ detail: () => ({ id: 'r1', status: 'running', options: { limits: {} } }) });
+      const fixture = TestBed.createComponent(RunsPage);
+      await fixture.whenStable();
+      fixture.componentInstance.open('r1');
+      await fixture.whenStable();
+      const source = FakeEventSource.all.at(-1)!;
+      const root = fixture.nativeElement as HTMLElement;
+      const now = () => root.querySelector('#now')!.parentElement!;
+      const actor = () => now().querySelector('.actor');
+
+      source.send(ev('stage', { node: 'guard', data: { steps: 0 } }));
+      source.send(ev('stage', { node: 'agent' }));
+      await fixture.whenStable();
+      expect(actor()?.textContent?.trim()).toBe('● LLM');
+      expect(actor()?.classList.contains('role-llm')).toBe(true);
+      expect(actor()?.querySelector('.dot')?.getAttribute('aria-hidden')).toBe('true');
+      expect(now().querySelector('.activity')?.textContent).toContain('is thinking (turn 1)');
+
+      source.send(
+        ev('llm', {
+          node: 'agent',
+          status: 'tool_calls',
+          data: { tool_calls: [{ id: 'c1', name: 'get_service_status', args: { service: 'a' } }] },
+        }),
+      );
+      source.send(ev('stage', { node: 'tools' }));
+      await fixture.whenStable();
+      expect(actor()?.textContent?.trim()).toBe('● Harness');
+      expect(actor()?.classList.contains('role-harness')).toBe(true);
+      expect(now().textContent).toContain('runs get_service_status (attempt 1)');
+      const choice = now().querySelector('.last-choice')!;
+      expect(choice.textContent).toBe('Last LLM choice: get_service_status({"service":"a"})');
+      expect(choice.getAttribute('title')).toBe(choice.textContent);
+    });
+
+    it('shows the person while an approval waits', async () => {
+      stubFetch({
+        detail: () => ({ id: 'r1', status: 'awaiting_approval', options: { limits: {} } }),
+      });
+      const fixture = TestBed.createComponent(RunsPage);
+      await fixture.whenStable();
+      fixture.componentInstance.open('r1');
+      await fixture.whenStable();
+      FakeEventSource.all
+        .at(-1)!
+        .send(ev('approval', { node: 'approval', tool: 'create_incident', status: 'pending' }));
+      await fixture.whenStable();
+      const now = (fixture.nativeElement as HTMLElement).querySelector('#now')!.parentElement!;
+      expect(now.querySelector('.actor')?.textContent?.trim()).toBe('● Person');
+      expect(now.querySelector('.actor')?.classList.contains('role-person')).toBe(true);
+      expect(now.textContent).toContain(
+        'must approve, edit or reject create_incident in Approvals',
+      );
+    });
+
+    it("shows the Result, with no actor, once a final run's done event arrived", async () => {
+      stubFetch({ detail: () => ({ id: 'r1', status: 'completed', options: { limits: {} } }) });
+      const fixture = TestBed.createComponent(RunsPage);
+      await fixture.whenStable();
+      fixture.componentInstance.open('r1');
+      await fixture.whenStable();
+      FakeEventSource.all
+        .at(-1)!
+        .send(ev('done', { status: 'completed', attention: 'success', msg: 'run completed' }));
+      await fixture.whenStable();
+      const now = (fixture.nativeElement as HTMLElement).querySelector('#now')!.parentElement!;
+      expect(now.querySelector('.actor')).toBeNull();
+      expect(now.querySelector('#now')?.textContent).toBe('Result');
+      expect(now.querySelector('.result-status')?.textContent).toContain('✔ completed');
+    });
+
+    it('shows no actor for an interrupted run, and says the final answer was the last choice', async () => {
+      stubFetch({ detail: () => ({ id: 'r1', status: 'interrupted', options: { limits: {} } }) });
+      const fixture = TestBed.createComponent(RunsPage);
+      await fixture.whenStable();
+      fixture.componentInstance.open('r1');
+      await fixture.whenStable();
+      const source = FakeEventSource.all.at(-1)!;
+      source.send(ev('stage', { node: 'agent' }));
+      source.send(ev('llm', { node: 'agent', status: 'final', data: { tool_calls: [] } }));
+      await fixture.whenStable();
+      const now = (fixture.nativeElement as HTMLElement).querySelector('#now')!.parentElement!;
+      expect(now.querySelector('.actor')).toBeNull();
+      expect(now.textContent).toContain('interrupted: nothing runs now');
+      expect(now.querySelector('.last-choice')?.textContent).toBe(
+        'Last LLM choice: the final answer',
+      );
+    });
+  });
+
+  describe('result', () => {
+    async function finish(detail: Record<string, unknown>, events: TraceEvent[]) {
+      const current = { id: 'r1', status: 'running', final: null, options: { limits: {} } };
+      stubFetch({ detail: () => current });
+      const fixture = TestBed.createComponent(RunsPage);
+      await fixture.whenStable();
+      fixture.componentInstance.open('r1');
+      await fixture.whenStable();
+      const source = FakeEventSource.all.at(-1)!;
+      events.forEach((event) => source.send(event));
+      await fixture.whenStable();
+      const now = (fixture.nativeElement as HTMLElement).querySelector('#now')!.parentElement!;
+      const before = now.querySelector('.answer')?.textContent?.trim();
+      Object.assign(current, detail); // the page reads the detail again on done
+      await fixture.componentInstance.refresh();
+      await fixture.whenStable();
+      return { now, before };
+    }
+
+    it('shows a completed run with its answer, its incident and its counts', async () => {
+      const { now, before } = await finish(
+        { status: 'completed', final: 'payments-api is degraded.\nIncident INC-26F42A3B opened.' },
+        [
+          ev('stage', { node: 'guard', data: { steps: 2, tool_calls: 1 } }),
+          ev('llm', {
+            node: 'agent',
+            status: 'tool_calls',
+            data: { tool_calls: [{ id: 'c9', name: 'create_incident', args: {} }] },
+          }),
+          ev('tool', {
+            node: 'tools',
+            tool: 'create_incident',
+            status: 'ok',
+            data: {
+              tool_call_id: 'c9',
+              attempt: 1,
+              result: { ok: true, data: { incident_id: 'INC-26F42A3B', status: 'open' } },
+            },
+          }),
+          ev('done', {
+            status: 'completed',
+            attention: 'success',
+            data: { status: 'completed', error: null, steps: 3, tool_calls: 2 },
+          }),
+          ev('eval', {
+            attention: 'success',
+            data: { target: 'answer', metric: 'faithfulness', value: 0.91 },
+          }),
+        ],
+      );
+      expect(before).toBe('…'); // the detail was not final yet
+      expect(now.querySelector('#now')?.textContent).toBe('Result');
+      const status = now.querySelector('.result-status span')!;
+      expect([status.textContent?.trim(), status.className]).toEqual(['✔ completed', 'green']);
+      expect(now.getAttribute('data-bar')).toBe('green');
+      expect(now.querySelector('.result-status')?.textContent).toContain('3 steps · 2 tool calls');
+      expect(now.querySelector('.result-error')).toBeNull();
+      expect(now.querySelector('.answer')?.textContent).toBe(
+        'payments-api is degraded.\nIncident INC-26F42A3B opened.',
+      );
+      expect(now.textContent).toContain('Incident INC-26F42A3B open');
+      expect(now.querySelector('.badge')?.textContent).toContain('faithfulness 0.91');
+      expect(now.querySelector('.actor')).toBeNull();
+      expect(now.textContent).not.toContain('NOW');
+    });
+
+    it('names no incident for a create_incident call that did not succeed', async () => {
+      const { now } = await finish({ status: 'completed', final: 'Rejected.' }, [
+        ev('llm', {
+          node: 'agent',
+          status: 'tool_calls',
+          data: { tool_calls: [{ id: 'c8', name: 'create_incident', args: {} }] },
+        }),
+        ev('tool', {
+          node: 'tools',
+          tool: 'create_incident',
+          status: 'error',
+          data: {
+            tool_call_id: 'c8',
+            attempt: 1,
+            result: { ok: false, error: { code: 'rejected', message: 'no' } },
+          },
+        }),
+        ev('done', { status: 'completed', attention: 'success', data: { status: 'completed' } }),
+      ]);
+      expect(now.querySelector('#now')?.textContent).toBe('Result');
+      expect(now.textContent).not.toContain('Incident');
+    });
+
+    it('explains a limit in words and says there is no final answer', async () => {
+      const { now } = await finish({ status: 'limit_exceeded', final: null }, [
+        ev('done', { status: 'limit_exceeded', attention: 'error', data: { error: 'max_steps' } }),
+      ]);
+      const status = now.querySelector('.result-status span')!;
+      expect([status.textContent?.trim(), status.className]).toEqual(['✖ limit_exceeded', 'red']);
+      expect(now.getAttribute('data-bar')).toBe('red');
+      expect(now.querySelector('.result-error')?.textContent).toBe(ERROR_TEXT['max_steps']);
+      expect(now.querySelector('.answer')?.textContent).toBe('No final answer.');
+    });
+
+    it('shows a cancelled run in blue, and an unknown error code as it is', async () => {
+      const { now } = await finish({ status: 'cancelled', final: null }, [
+        ev('done', { status: 'cancelled', attention: 'info', data: { error: 'something_new' } }),
+      ]);
+      const status = now.querySelector('.result-status span')!;
+      expect([status.textContent?.trim(), status.className]).toEqual(['ℹ cancelled', 'blue']);
+      expect(now.querySelector('.result-error')?.textContent).toBe('something_new');
+    });
+
+    it('has a sentence for every error code in DESIGN §3', () => {
+      expect(Object.keys(ERROR_TEXT).sort()).toEqual(
+        [
+          'internal_error',
+          'llm_unavailable',
+          'malformed_reply',
+          'max_run_seconds',
+          'max_steps',
+          'max_tool_calls',
+          'recursion_limit',
+        ].sort(),
+      );
+    });
+  });
+
   describe('console', () => {
     async function openWithEvents() {
       stubFetch({ detail: () => ({ id: 'r1', status: 'running', options: { limits: {} } }) });
@@ -543,6 +806,150 @@ describe('RunsPage', () => {
     });
   });
 
+  describe('colours', () => {
+    it("shows each run's status with colour, icon and word, and a running run in the harness colour", async () => {
+      const run = (id: string, status: string) => ({
+        id,
+        status,
+        objective: 'check payments-api',
+        created_at: '2026-09-29T09:00:00.000Z',
+      });
+      stubFetch({
+        runs: [
+          run('r1aaaaaa', 'completed'),
+          run('r2bbbbbb', 'limit_exceeded'),
+          run('r3cccccc', 'running'),
+        ],
+      });
+      const fixture = TestBed.createComponent(RunsPage);
+      await fixture.whenStable();
+      const rows = [...(fixture.nativeElement as HTMLElement).querySelectorAll('.run-row')];
+      const status = (row: Element) => row.querySelector('.status')!;
+      expect(status(rows[0]).classList.contains('green')).toBe(true);
+      expect(status(rows[0]).textContent?.trim()).toBe('✔ completed');
+      expect(status(rows[1]).classList.contains('red')).toBe(true);
+      expect(status(rows[1]).textContent?.trim()).toBe('✖ limit_exceeded');
+      expect(status(rows[2]).classList.contains('role-harness')).toBe(true);
+      expect(status(rows[2]).textContent?.trim()).toBe('● running');
+      expect(status(rows[2]).querySelector('[aria-hidden="true"]')?.textContent).toBe('●');
+    });
+
+    it('marks the Approvals panel while approvals wait', async () => {
+      const approval = {
+        id: 'ap1',
+        run_id: 'r2abcdef',
+        tool: 'create_incident',
+        args: {},
+        status: 'pending',
+        expires_at: '2999-01-01T00:00:00.000Z',
+      };
+      let approvals = [approval];
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async (url: string) =>
+          jsonResponse(url === '/api/approvals?status=pending' ? approvals : []),
+        ),
+      );
+      const fixture = TestBed.createComponent(RunsPage);
+      await fixture.whenStable();
+      const panel = (fixture.nativeElement as HTMLElement)
+        .querySelector('#approvals')!
+        .closest('section')!;
+      expect(panel.classList.contains('waiting')).toBe(true);
+      expect(panel.textContent).toContain('Approvals (1)');
+      approvals = [];
+      await fixture.componentInstance.refresh();
+      await fixture.whenStable();
+      expect(panel.classList.contains('waiting')).toBe(false);
+    });
+
+    it('starts an LLM timeline item with the tag LLM and colours the console kind by role', async () => {
+      stubFetch({ detail: () => ({ id: 'r1', status: 'running', options: { limits: {} } }) });
+      const fixture = TestBed.createComponent(RunsPage);
+      await fixture.whenStable();
+      fixture.componentInstance.open('r1');
+      await fixture.whenStable();
+      const source = FakeEventSource.all.at(-1)!;
+      source.send(
+        ev('llm', { node: 'agent', msg: 'LLM attempt 1: final', data: { tool_calls: [] } }),
+      );
+      source.send(ev('tool', { node: 'tools', tool: 'get_service_status', status: 'ok' }));
+      await fixture.whenStable();
+
+      const root = fixture.nativeElement as HTMLElement;
+      const item = root.querySelector('.timeline li .item')!;
+      expect(item.getAttribute('data-bar')).toBe('llm');
+      const tag = item.querySelector('.tag')!;
+      expect([tag.textContent, tag.className]).toEqual(['LLM', 'tag role-llm']);
+      expect(item.textContent?.trim().startsWith('LLM')).toBe(true);
+      const kinds = [...root.querySelectorAll('.console-lines li .line span:nth-child(2)')];
+      expect(kinds.map((k) => [k.textContent, k.className])).toEqual([
+        ['llm', 'role-llm'],
+        ['tool', 'role-tool'],
+      ]);
+    });
+  });
+
+  describe('bars', () => {
+    it('gives call, done and attention items a bar in their colour', async () => {
+      stubFetch({ detail: () => ({ id: 'r1', status: 'running', options: { limits: {} } }) });
+      const fixture = TestBed.createComponent(RunsPage);
+      await fixture.whenStable();
+      fixture.componentInstance.open('r1');
+      await fixture.whenStable();
+      const source = FakeEventSource.all.at(-1)!;
+      source.send(
+        ev('llm', {
+          node: 'agent',
+          data: { tool_calls: [{ id: 'c1', name: 'get_service_status', args: {} }] },
+        }),
+      );
+      source.send(
+        ev('retry', {
+          node: 'tools',
+          tool: 'get_service_status',
+          attention: 'warn',
+          status: 'retry',
+        }),
+      );
+      source.send(
+        ev('tool', {
+          node: 'tools',
+          tool: 'get_service_status',
+          status: 'ok',
+          data: { tool_call_id: 'c1', attempt: 2, result: { ok: true, data: {} } },
+        }),
+      );
+      source.send(ev('done', { status: 'completed', attention: 'success' }));
+      await fixture.whenStable();
+
+      const root = fixture.nativeElement as HTMLElement;
+      const call = root.querySelector('.timeline .item.call')!;
+      expect(call.getAttribute('data-bar')).toBe('tool');
+      expect(call.querySelector('strong')?.className).toBe('role-tool');
+      expect(root.querySelector('.timeline .item.done')?.getAttribute('data-bar')).toBe('green');
+      const rows = [...root.querySelectorAll('.attention .item')];
+      expect(
+        rows.map((row) => [row.classList.contains('tint'), row.getAttribute('data-bar')]),
+      ).toEqual([
+        [true, 'green'],
+        [true, 'amber'],
+      ]);
+    });
+
+    it('gives a done item without attention the harness bar', async () => {
+      stubFetch({ detail: () => ({ id: 'r1', status: 'completed', options: { limits: {} } }) });
+      const fixture = TestBed.createComponent(RunsPage);
+      await fixture.whenStable();
+      fixture.componentInstance.open('r1');
+      await fixture.whenStable();
+      FakeEventSource.all.at(-1)!.send(ev('done', { status: 'completed' }));
+      await fixture.whenStable();
+      const done = (fixture.nativeElement as HTMLElement).querySelector('.timeline .item.done')!;
+      expect(done.getAttribute('data-bar')).toBe('harness');
+    });
+  });
+
   describe('budget meters', () => {
     it('shows a meter with used and max for steps, tool calls and seconds', async () => {
       stubFetch({
@@ -567,6 +974,12 @@ describe('RunsPage', () => {
       expect(root.textContent).toContain('tool calls 2 / 5');
       expect(meters[0].getAttribute('max')).toBe('10');
       expect(meters[0].getAttribute('value')).toBe('3');
+      // The browser colours a meter near its limit: low at half, high at four fifths, and none is optimum.
+      expect(['low', 'high', 'optimum'].map((a) => meters[0].getAttribute(a))).toEqual([
+        '5',
+        '8',
+        '0',
+      ]);
     });
 
     it('shows no meter when the run detail has no limits', async () => {

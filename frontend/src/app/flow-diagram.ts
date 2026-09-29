@@ -3,7 +3,10 @@ import { TraceEvent } from './api';
 import { FLOW, NODE_H, NODE_W } from './flow';
 import { attentionStyle } from './trace';
 
-/** The flow diagram, drawn only from `FLOW`: the active node is outlined; a node with an event shows its status. */
+/**
+ * The flow diagram, drawn only from `FLOW`: each node in its role's colour, the active node outlined and tinted,
+ * and a node with an event shows its status. The legend names the roles in words.
+ */
 @Component({
   selector: 'app-flow-diagram',
   template: `
@@ -23,7 +26,10 @@ import { attentionStyle } from './trace';
         />
       }
       @for (node of flow.nodes; track node.id) {
-        <g class="node" [class.active]="node.id === active()" [attr.data-node]="node.id">
+        <g
+          [attr.class]="'node role-' + node.role + (node.id === active() ? ' active' : '')"
+          [attr.data-node]="node.id"
+        >
           <title>{{ node.id }}</title>
           <rect [attr.x]="node.x" [attr.y]="node.y" [attr.width]="w" [attr.height]="h" rx="6" />
           <text [attr.x]="node.x + 8" [attr.y]="node.y + 14">{{ node.label }}</text>
@@ -39,6 +45,10 @@ import { attentionStyle } from './trace';
         </g>
       }
     </svg>
+    <p class="legend">
+      <span class="role-llm">LLM</span> · <span class="role-harness">Harness</span> ·
+      <span class="role-tool">Tool</span> · <span class="role-person">Person</span>
+    </p>
   `,
 })
 export class FlowDiagram {

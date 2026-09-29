@@ -1,6 +1,14 @@
 import fixture from './trace.fixture.json';
 import { TraceEvent } from './api';
-import { TraceStore, attentionStyle, eventText, nodeOf, resultText } from './trace';
+import {
+  TraceStore,
+  attentionStyle,
+  eventText,
+  nodeOf,
+  resultText,
+  roleOf,
+  runStatusStyle,
+} from './trace';
 
 let seq = 0;
 
@@ -201,6 +209,137 @@ describe('TraceStore', () => {
       expect(end.badges.map((b) => b.data.metric)).toEqual(['faithfulness', 'answer_relevancy']);
       expect(s.expectedEvals(true)).toBe(3);
       expect(s.expectedEvals(false)).toBe(1);
+    });
+  });
+
+  describe('activity', () => {
+    const act = (...events: TraceEvent[]) => store(...events).activity();
+
+    it('waits before any event and says nothing runs after done', () => {
+      expect(act()).toEqual({ actor: 'none', text: 'Waiting for the first event' });
+      expect(act(guard(0, 0), done('completed', 'success'))).toEqual({
+        actor: 'none',
+        text: 'run completed',
+      });
+    });
+
+    it('names the LLM while it thinks, with its turn, and its retry attempt', () => {
+      expect(act(guard(2, 2), ev('stage', { node: 'agent' }))).toEqual({
+        actor: 'llm',
+        text: 'is thinking (turn 3)',
+      });
+      expect(
+        act(
+          guard(0, 0),
+          ev('stage', { node: 'agent' }),
+          ev('retry', { node: 'agent', data: { attempt: 1 } }),
+        ),
+      ).toEqual({ actor: 'llm', text: 'is thinking (turn 1, attempt 2)' });
+    });
+
+    it('names the harness running a call with its attempt, and waiting before a retry', () => {
+      const call = [{ id: 'c1', name: 'get_service_status', args: STATUS_ARGS }];
+      const s = store(guard(0, 0), llm(call));
+      expect(s.activity()).toEqual({ actor: 'harness', text: "checks the LLM's reply" });
+      s.add(toolsStage());
+      expect(s.activity()).toEqual({
+        actor: 'harness',
+        text: 'runs get_service_status (attempt 1)',
+      });
+      s.add(tool('c1', 'get_service_status', 1, 'timeout'));
+      s.add(retry('c1', 'get_service_status', 1));
+      expect(s.activity()).toEqual({
+        actor: 'harness',
+        text: 'waits 0.40 s, then runs get_service_status again (attempt 2)',
+      });
+      s.add(tool('c1', 'get_service_status', 2, 'ok'));
+      expect(s.activity()).toEqual({
+        actor: 'harness',
+        text: 'has the result of get_service_status',
+      });
+    });
+
+    it('forgets a retry wait from before a resume: the call starts again at attempt 1', () => {
+      const s = store(
+        guard(0, 0),
+        llm([{ id: 'c1', name: 'get_service_status', args: STATUS_ARGS }]),
+        toolsStage(),
+        tool('c1', 'get_service_status', 1, 'timeout'),
+        retry('c1', 'get_service_status', 1),
+        ev('log', { msg: 'anonymous resume_run r1' }),
+        toolsStage(),
+      );
+      expect(s.activity()).toEqual({
+        actor: 'harness',
+        text: 'runs get_service_status (attempt 1)',
+      });
+    });
+
+    it('names the person while an approval waits, then the harness after the decision', () => {
+      const s = store(
+        llm([{ id: 'c9', name: 'create_incident', args: {} }]),
+        ev('approval', { node: 'approval', tool: 'create_incident', status: 'pending' }),
+      );
+      expect(s.activity()).toEqual({
+        actor: 'person',
+        text: 'must approve, edit or reject create_incident in Approvals',
+      });
+      s.add(ev('approval', { node: 'approval', tool: 'create_incident', status: 'approved' }));
+      expect(s.activity()).toEqual({
+        actor: 'harness',
+        text: 'continues after the decision on create_incident',
+      });
+    });
+
+    it('names the person, not the running call, when an approval waits after the tools step began', () => {
+      const s = store(
+        guard(0, 0),
+        llm([
+          { id: 'c1', name: 'get_service_status', args: STATUS_ARGS },
+          { id: 'c9', name: 'create_incident', args: {} },
+        ]),
+        toolsStage(),
+        tool('c1', 'get_service_status', 1, 'ok'),
+        ev('approval', { node: 'approval', tool: 'create_incident', status: 'pending' }),
+      );
+      expect(s.activity().actor).toBe('person');
+    });
+
+    it('names the harness at the guard, at finalize and for anything else', () => {
+      expect(act(ev('stage', { node: 'guard', msg: 'step 1 of 8, 1 of 12 tool calls' }))).toEqual({
+        actor: 'harness',
+        text: 'checks the limits: step 1 of 8, 1 of 12 tool calls',
+      });
+      expect(act(ev('stage', { node: 'finalize' }))).toEqual({
+        actor: 'harness',
+        text: 'finishes the run',
+      });
+      expect(act(ev('log', { msg: 'anonymous create_run r1' }))).toEqual({
+        actor: 'harness',
+        text: 'starts the run',
+      });
+      expect(act(ev('stage', { node: 'tools', msg: '0 call(s)' }))).toEqual({
+        actor: 'harness',
+        text: 'is working: 0 call(s)',
+      });
+    });
+
+    it('keeps the last LLM choice, skipping retries and unavailable replies', () => {
+      const s = store(guard(0, 0));
+      expect(s.lastReply()).toBeNull();
+      const choice = llm([{ id: 'c1', name: 'get_service_status', args: STATUS_ARGS }]);
+      s.add(choice);
+      expect(s.lastReply()).toBe(choice);
+      s.add(ev('llm', { node: 'agent', status: 'retry' }));
+      s.add(ev('llm', { node: 'agent', status: 'unavailable' }));
+      expect(s.lastReply()).toBe(choice);
+      const malformed = ev('llm', {
+        node: 'agent',
+        status: 'malformed',
+        data: { reason: 'no JSON' },
+      });
+      s.add(malformed);
+      expect(s.lastReply()).toBe(malformed);
     });
   });
 
@@ -424,6 +563,61 @@ describe('attentionStyle', () => {
   });
 });
 
+describe('runStatusStyle', () => {
+  const rows: [string, string, string][] = [
+    ['completed', 'green', '✔'],
+    ['failed', 'red', '✖'],
+    ['limit_exceeded', 'red', '✖'],
+    ['timed_out', 'red', '✖'],
+    ['cancelled', 'blue', 'ℹ'],
+    ['awaiting_approval', 'amber', '⚠'],
+    ['interrupted', 'amber', '⚠'],
+  ];
+
+  it.each(rows)('%s is %s with an icon and its own word', (status, colour, icon) => {
+    expect(runStatusStyle(status)).toEqual({ colour, icon, word: status });
+  });
+
+  it('gives nothing while the run is running', () => {
+    expect(runStatusStyle('running')).toBeNull();
+  });
+});
+
+describe('roleOf', () => {
+  it("gives the flow role of the event's node, and the harness for events without a node", () => {
+    const roles = [
+      ev('llm'),
+      ev('stage', { node: 'agent' }),
+      ev('stage', { node: 'guard' }),
+      ev('stage', { node: 'tools' }),
+      ev('tool', { tool: 'get_service_status' }),
+      ev('stage', { node: 'kb.bm25', tool: 'search_knowledge_base' }),
+      ev('retry', { node: 'tools', tool: 'get_service_status' }),
+      ev('retry', { node: 'agent' }),
+      ev('approval', { tool: 'create_incident' }),
+      ev('done'),
+      ev('log'),
+      ev('eval'),
+      ev('error'),
+    ].map(roleOf);
+    expect(roles).toEqual([
+      'llm',
+      'llm',
+      'harness',
+      'harness',
+      'tool',
+      'tool',
+      'tool',
+      'llm',
+      'person',
+      'harness',
+      'harness',
+      'harness',
+      'harness',
+    ]);
+  });
+});
+
 describe('TraceStore against a real run (fixture from the backend, Approve scenario)', () => {
   // Captured from a live uvicorn run (`llm: fake`, get_service_status faulted to time out twice)
   // through the actual API: POST /api/runs, approve the pending approval, GET the trace.
@@ -435,6 +629,23 @@ describe('TraceStore against a real run (fixture from the backend, Approve scena
     events.filter((e) => e.seq <= seq).forEach((e) => s.add(e));
     return s;
   };
+
+  it('names who is working at each step of the real run', () => {
+    const at = (seq: number) => replayUpTo(seq).activity();
+    expect([3, 5, 12, 16, 23, 24, 29, 31, 32].map(at)).toEqual([
+      { actor: 'llm', text: 'is thinking (turn 1)' },
+      { actor: 'harness', text: 'runs search_knowledge_base (attempt 1)' },
+      { actor: 'llm', text: 'is thinking (turn 2)' },
+      { actor: 'harness', text: 'waits 0.10 s, then runs get_service_status again (attempt 2)' },
+      { actor: 'person', text: 'must approve, edit or reject create_incident in Approvals' },
+      { actor: 'harness', text: 'continues after the decision on create_incident' },
+      { actor: 'llm', text: 'is thinking (turn 4)' },
+      { actor: 'harness', text: 'finishes the run' },
+      { actor: 'none', text: 'run completed' },
+    ]);
+    expect(replayUpTo(29).lastReply()?.seq).toBe(22);
+    expect(replayUpTo(32).lastReply()?.status).toBe('final');
+  });
 
   it('has the shape this store expects: a search, a retried status check, an approved incident, done', () => {
     expect(fixture.status).toBe('completed');

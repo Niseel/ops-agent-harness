@@ -51,6 +51,11 @@ def zero_retry_delay(monkeypatch):
     monkeypatch.setattr(cfg.retry, "max_delay_s", 0.0)
 
 
+@pytest.fixture(autouse=True)
+def no_fake_delay(monkeypatch):
+    monkeypatch.setattr(cfg.llm, "fake_delay_ms", (0, 0))
+
+
 @pytest.fixture
 def short_timeouts(monkeypatch):
     """Tool and LLM timeouts of 0.05 s, for fault tests that wait for a real timeout.

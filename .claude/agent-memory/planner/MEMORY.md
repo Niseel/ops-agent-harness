@@ -1,3 +1,3 @@
-- [Plan checks](feedback_plan-checks.md) — M1–M5 gaps (task-order tests, shared-connection transactions, SSE, UI field map, falsifiable graders, Docker/CI checks); defaults-first works
-- [Library notes pointer](reference_library-notes.md) — library facts live in the M1–M5 plans (LangGraph, openai, ragas pin, FastAPI SSE, Angular 22.2, Node, uv Docker, Qdrant image); this machine's tools
+- [Plan checks](feedback_plan-checks.md) — M1–M6 gaps (task-order tests, shared transactions, SSE, UI field map, falsifiable graders, Docker/CI, spec copy that pins UI text); defaults-first works
+- [Library notes pointer](reference_library-notes.md) — library facts live in the M1–M6 plans (LangGraph, openai, ragas pin, FastAPI SSE, Angular 22.2, jsdom gaps, Node, uv Docker, Qdrant); this machine's tools
 - [Private name never in repo](project_private-name.md) — earlier private project's name must not appear in any repo file or this memory dir

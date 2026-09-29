@@ -31,7 +31,7 @@ Or build the UI once (`cd frontend && npm ci && npm run build`) before starting 
 
 ## Try it
 
-- **UI**: start a run from the form, watch the timeline, and approve the incident in the inbox. The fault switches and limits start the demo scenarios in [docs/REVIEW_GUIDE.md §4](docs/REVIEW_GUIDE.md#4-demo-scenarios).
+- **UI**: start a run from the form, watch the timeline, and approve the incident in the inbox. The fault switches and limits start the demo scenarios in [docs/REVIEW_GUIDE.md §4](docs/REVIEW_GUIDE.md#4-demo-scenarios). Help, at the top right, walks through the page.
 - **CLI** (from `backend/`): `uv run python -m app.cli run --no-eval "payments-api is returning 5xx errors. Investigate and open an incident if needed."`, then answer the approval prompt with `a`. Without `--no-eval` the command waits for online evaluation after the run, which takes minutes with a slow local judge.
 - **Postman** (from the repo root): `npx --yes newman@6.2.2 run docs/postman_collection.json --folder "1. Demo flow: create → approve → trace"` creates a run, approves the incident and checks the trace.
 

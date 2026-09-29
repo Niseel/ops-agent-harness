@@ -151,7 +151,7 @@ Retries use exponential backoff with full jitter (`retry.base_delay_s`, `retry.m
 Modes, chosen per run; default from `LLM_DEFAULT` ([0003](../docs/adr/0003-llm-openai-compatible-with-fake.md)):
 
 - `openai`: `openai.AsyncOpenAI` chat completions with tools, against any OpenAI-compatible endpoint (`LLM_*` env vars).
-- `fake`: `FakePlanner`, rule-based. Searches the knowledge base, checks the service named in the objective, and proposes an incident only if the objective asks for one (contains "incident") and the service is `degraded` or `down` (severity from the policy it found). If a search result contains an instruction to open an incident, it follows it and proposes that incident: it imitates a model that falls for prompt injection, so the approval gate can be shown stopping it. Then it answers.
+- `fake`: `FakePlanner`, rule-based. Searches the knowledge base, checks the service named in the objective, and proposes an incident only if the objective asks for one (contains "incident") and the service is `degraded` or `down` (severity from the policy it found). If a search result contains an instruction to open an incident, it follows it and proposes that incident: it imitates a model that falls for prompt injection, so the approval gate can be shown stopping it. Then it answers. It waits a random 300–500 ms before each reply (`llm.fake_delay_ms` in `config.yaml`; `[0, 0]` turns the wait off), so a person can follow a run in the UI. The wait counts toward `llm.timeout_s` and `latency_ms`; tests set it to `[0, 0]`.
 - Tests use `ScriptedLLM`: a fixed list of replies.
 
 `llm_gateway` retries only transient errors (connection errors, timeouts, HTTP 408, 409, 429 and 5xx), up to `llm.max_attempts`, each attempt limited by `llm.timeout_s`; other API errors fail the call at once. When the call fails, the run fails with `llm_unavailable`. It classifies each reply:
@@ -298,12 +298,14 @@ Every state-changing call (create run, decide, resume, cancel, start evaluation)
 
 ### UI
 
-A run console, not a chat ([0015](../docs/adr/0015-ui-run-console-not-chat.md), [0016](../docs/adr/0016-ui-angular.md)). Angular, served by FastAPI in production. Tabs: Runs, Evaluation, Incidents.
+A run console, not a chat ([0015](../docs/adr/0015-ui-run-console-not-chat.md), [0016](../docs/adr/0016-ui-angular.md)). Angular, served by FastAPI in production. Tabs: Runs, Evaluation, Incidents. Help, at the top right, starts a guided tour of the page.
 
-- Left: new run form (objective, LLM mode, fault switches, limits, evaluate) and the runs list.
-- Center: run timeline with each LLM decision and each tool call (name, arguments, attempts, result, duration, evaluation badges).
+- Left: new run form (objective, LLM mode, fault switches, limits, evaluate) and the runs list, each run with its status in colour, icon and word.
+- Center, from the top: the Now panel with the actor at work (the LLM, the harness or a person), what it does, the NOW bar (running tool, arguments, attempt) and the LLM's last choice; when the run ends it becomes the Result panel: the status in colour, icon and word, the error in words, the final answer, the incident created and the evaluation badges. Then the flow diagram with one node per tool and knowledge-base sub-steps, and the run timeline with each LLM decision and each tool call (name, arguments, attempts, result, duration, evaluation badges).
 - Right: approval inbox for all runs (TTL countdown; approve, edit, reject with reason), budget meters (steps, tool calls, time), attention list.
-- Bottom: NOW bar (running tool, arguments, attempt), flow diagram with one node per tool and knowledge-base sub-steps, console with filters (All, Tools, Attention), detail panel with the real data of a step.
+- Bottom: console with filters (All, Tools, Attention) and the detail panel with the real data of a step.
+- From 1200×640 CSS pixels up the Runs tab fits the window: the page does not scroll, each panel scrolls inside, and the timeline and the console keep the newest step in view unless the user scrolled back. In smaller windows the panels stack, the page scrolls and the Now panel stays at the top.
+- Colours: one per actor (LLM, harness, tool, person) on the Now panel, the flow, the timeline and the console, next to the attention colours below. Every text colour has a contrast of at least 4.5:1 in the light and the dark theme.
 - Attention is shown with colour, icon and text, never colour alone.
 
 ### Configuration
@@ -374,9 +376,15 @@ Each AC names how it is proved. Unit and API tests run with `ScriptedLLM` or `Fa
 - **AC-13** (R12) Given the UI is open, when a user starts a run:
   - the timeline and the NOW bar update live with tool name, arguments and attempt number, and the flow diagram lights the running node;
   - a pending approval appears in the inbox and can be approved, edited or rejected from there;
-  - retries, failures, limits and `sparse_only` search are highlighted with colour, icon and text, as in the attention table above.
+  - retries, failures, limits and `sparse_only` search are highlighted with colour, icon and text, as in the attention table above;
+  - with the fake LLM each reply takes 300–500 ms (`llm.fake_delay_ms`), so a person can follow the run; a cancel during that wait still ends the run `cancelled`;
+  - from 1280×720 CSS pixels up the Runs tab fits the window: the page does not scroll, panels scroll inside, and the timeline and the console keep the newest step in view;
+  - the LLM, the harness, the tools and the person have one colour each, and every text colour keeps a contrast of at least 4.5:1 in the light and the dark theme;
+  - the Now panel says at each moment whether the LLM, the harness or a person is working, on which tool and attempt, and what the LLM chose last;
+  - when the run ends, the Result panel shows the status in colour, icon and word, the error in words, the final answer and the incident created;
+  - Help, at the top right, starts a tour that highlights each panel in turn; Esc closes it and focus returns to Help.
 
-  Proved by frontend unit tests of the event store (event → node state, NOW bar, attention) and by the manual steps in `docs/REVIEW_GUIDE.md`.
+  Proved by frontend unit tests of the event store (event → node state, NOW bar, actor, attention), backend tests of the fake LLM's wait, a colour-contrast test, tests of the tour, and the manual steps in `docs/REVIEW_GUIDE.md`.
 - **AC-14** (R16) Given the knowledge base is indexed:
   - when a query contains an exact term that appears in only one runbook (such as an error code), then that runbook is in the top 3 with `ranks.bm25 <= 3`;
   - when a query paraphrases a runbook with no shared keywords, then that runbook is in the top 3 with `ranks.dense <= 3` (a `live` test with a real embedding model);
