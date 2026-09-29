@@ -167,7 +167,7 @@ main {
   margin: 0 0 8px;
 }
 
-/* Runs tab: ADR 0015's sketch. Left, center, right; bottom spans all three. */
+/* Runs tab: ADR 0015's sketch. Left, center, right; bottom spans all three. Stacked here, one screen below. */
 .console {
   display: grid;
   grid-template-columns: minmax(240px, 1fr) minmax(0, 2fr) minmax(240px, 1fr);
@@ -196,10 +196,126 @@ main {
   align-content: start;
 }
 
+.console .bottom {
+  display: grid;
+  gap: 12px;
+}
+
+.panel-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 8px;
+  margin-bottom: 6px;
+}
+
+.panel .panel-head h2 {
+  margin: 0;
+}
+
+/* Who is working stays in view while the page scrolls; focus scrolls below it, not under it. */
+html {
+  scroll-padding-top: 8rem;
+}
+
+.now {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  max-height: 8rem; /* matches the scroll padding above; long arguments scroll inside */
+  overflow: auto;
+}
+
 @media (max-width: 900px) {
+  /* One column. The center's panels join the column, so the Now panel sticks over the whole page. */
   .console {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-areas: 'left' 'center' 'right' 'bottom';
+    display: flex;
+    flex-direction: column;
+  }
+  .console .center {
+    display: contents;
+  }
+}
+
+/* One screen: the page does not scroll; each panel's list scrolls inside (spec, UI). */
+@media (min-width: 1200px) and (min-height: 640px) {
+  :root {
+    --header-h: 3rem;
+  }
+  body {
+    overflow: hidden;
+  }
+  .app-header {
+    height: var(--header-h);
+    padding-block: 0;
+  }
+  main {
+    height: calc(100dvh - var(--header-h));
+    padding: 8px 12px;
+  }
+  main > section {
+    height: 100%;
+  }
+  main > section[data-tab='eval'],
+  main > section[data-tab='incidents'] {
+    overflow: auto;
+  }
+  app-runs-page {
+    display: block;
+    height: 100%;
+  }
+  .console {
+    height: 100%;
+    grid-template-columns: minmax(13rem, 17%) minmax(0, 1fr) minmax(16rem, 21%);
+    grid-template-rows: minmax(0, 1fr) minmax(9rem, 25%);
+    gap: 8px;
+  }
+  .console > *,
+  .console .panel {
+    min-height: 0;
+  }
+  .console .stack {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .console .panel {
+    display: flex;
+    flex-direction: column;
+    overflow: auto; /* only when a panel is squeezed; its list scrolls first */
+  }
+  .console .fill {
+    flex: 1 1 0;
+    min-height: 6rem;
+  }
+  .console .now {
+    max-height: 35%;
+  }
+  .console .approvals {
+    max-height: 45%;
+  }
+  .console .approvals:has(.approval) {
+    max-height: 60%; /* a waiting decision keeps its buttons in view; budget and attention give way */
+    flex-shrink: 0;
+  }
+  .console .bottom {
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+    gap: 8px;
+  }
+  .runs,
+  .timeline,
+  .attention,
+  .console .console-lines,
+  .console .bottom pre {
+    flex: 1 1 0;
+    min-height: 0;
+    max-height: none;
+    overflow: auto;
+  }
+  .flow {
+    max-height: 14rem;
   }
 }
 
@@ -314,7 +430,9 @@ details[open] {
 /* Budget, attention, NOW bar, flow, console */
 .meter {
   display: grid;
-  gap: 2px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); /* label and meter on one row: a short Budget panel */
+  align-items: center;
+  column-gap: 8px;
 }
 
 meter {
@@ -359,7 +477,7 @@ meter {
 
 .flow text {
   fill: currentColor;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .flow .node.active text:first-of-type {
@@ -367,11 +485,11 @@ meter {
 }
 
 .flow text.state {
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .console-lines {
-  max-height: 320px;
+  max-height: 320px; /* stacked layout; the one-screen layout lets the panel decide */
   overflow: auto;
 }
 
@@ -413,6 +531,9 @@ button[aria-pressed='true'] {
 
 .token {
   margin-bottom: 8px;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  column-gap: 8px;
 }
 
 .inbox {
@@ -427,6 +548,11 @@ button[aria-pressed='true'] {
 .decide {
   display: grid;
   gap: 6px;
+}
+
+.approval pre {
+  max-height: 4.5rem; /* long arguments scroll, so the decision buttons stay in view */
+  overflow: auto;
 }
 
 .approval {

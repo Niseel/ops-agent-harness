@@ -78,6 +78,29 @@ describe('RunsPage', () => {
     vi.unstubAllGlobals();
   });
 
+  it('shows every panel with its empty text before a run is open', async () => {
+    stubFetch({});
+    const fixture = TestBed.createComponent(RunsPage);
+    await fixture.whenStable();
+    const root = fixture.nativeElement as HTMLElement;
+    const panel = (id: string) => root.querySelector(`#${id}`)?.closest('section')?.textContent;
+    expect(panel('now')).toContain('No run open. Start one on the left or pick one from the list.');
+    expect(root.querySelectorAll('app-flow-diagram g.node').length).toBe(12);
+    expect(root.querySelector('app-flow-diagram g.node.active')).toBeNull();
+    expect(panel('run-title')).toContain('Start a run or pick one from the list.');
+    expect(panel('console')).toContain('No events for this filter.');
+    expect(panel('detail')).toContain('Select a step to see its data.');
+    expect(panel('runs')).toContain('No runs yet.');
+    expect(panel('approvals')).toContain('Approvals (0)');
+    expect(panel('budget')).toContain('Open a run to see its budget.');
+    expect(panel('attention')).toContain('Nothing needs attention.');
+    // Center column from the top: Now, Flow, then the timeline; the bottom band holds console and detail.
+    const ids = (area: string) =>
+      [...root.querySelectorAll(`.${area} > section h2`)].map((h) => h.id);
+    expect(ids('center')).toEqual(['now', 'flow', 'run-title']);
+    expect(ids('bottom')).toEqual(['console', 'detail']);
+  });
+
   it('opening a run subscribes and renders timeline items as events arrive', async () => {
     stubFetch({ detail: () => ({ id: 'r1', status: 'running', options: { limits: {} } }) });
     const fixture = TestBed.createComponent(RunsPage);
@@ -114,6 +137,30 @@ describe('RunsPage', () => {
 
     expect(source.closed).toBe(true);
     expect(calls).toBeGreaterThan(callsBeforeDone);
+  });
+
+  it('keeps the timeline at its end when the final answer arrives after done', async () => {
+    let final: string | null = null;
+    stubFetch({
+      detail: () => ({ id: 'r1', status: 'completed', final, options: { limits: {} } }),
+    });
+    const fixture = TestBed.createComponent(RunsPage);
+    await fixture.whenStable();
+    fixture.componentInstance.open('r1');
+    await fixture.whenStable();
+    FakeEventSource.all.at(-1)!.send(ev('done', { status: 'completed' }));
+    await fixture.whenStable();
+
+    // The answer makes the done item taller; the event count stays the same.
+    const timeline = (fixture.nativeElement as HTMLElement).querySelector('ol.timeline')!;
+    Object.defineProperty(timeline, 'clientHeight', { configurable: true, value: 100 });
+    Object.defineProperty(timeline, 'scrollHeight', { configurable: true, value: 500 });
+    final = 'payments-api is degraded.';
+    await fixture.componentInstance.refresh();
+    await fixture.whenStable();
+
+    expect(timeline.textContent).toContain('payments-api is degraded.');
+    expect(timeline.scrollTop).toBe(500);
   });
 
   it('reads /trace after done when evaluate is true, and stops once the expected evals are in', async () => {

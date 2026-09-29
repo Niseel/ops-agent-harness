@@ -1,6 +1,6 @@
 # 0015. UI concept: run console with approval inbox, not a chat
 
-Status: Accepted · Date: 2026-09-26
+Status: Accepted · Date: 2026-09-26 · Refined in M6: the Runs tab fits one screen, with the Now panel and the flow above the timeline and the console and detail below ([spec, UI](../../specs/ops-agent-harness.md#ui))
 
 ## Context
 

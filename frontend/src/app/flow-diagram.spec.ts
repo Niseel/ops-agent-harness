@@ -60,6 +60,15 @@ describe('FLOW', () => {
     expect(FLOW.edges.length).toBe(16);
   });
 
+  it('fits a viewBox of at most 900×170, with every node inside it', () => {
+    expect(FLOW.width).toBeLessThanOrEqual(900);
+    expect(FLOW.height).toBeLessThanOrEqual(170);
+    const outside = FLOW.nodes.filter(
+      (n) => n.x < 0 || n.y < 0 || n.x + NODE_W > FLOW.width || n.y + NODE_H > FLOW.height,
+    );
+    expect(outside).toEqual([]);
+  });
+
   it('places no node over another', () => {
     const overlaps = FLOW.nodes.flatMap((a, i) =>
       FLOW.nodes

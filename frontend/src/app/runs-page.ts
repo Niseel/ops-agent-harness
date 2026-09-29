@@ -3,6 +3,7 @@ import { Component, DestroyRef, computed, inject, signal } from '@angular/core';
 import { Approval, RunDetail, RunSummary, TraceEvent, api, followRun } from './api';
 import { ApprovalInbox } from './approval-inbox';
 import { FlowDiagram } from './flow-diagram';
+import { Follow } from './follow';
 import { RunForm } from './run-form';
 import { TraceStore, attentionStyle, eventText, resultText } from './trace';
 
@@ -11,12 +12,12 @@ export const EVAL_POLL_MS = 3000; // `/trace` reads after `done`, for the evalua
 export const EVAL_POLL_READS = 40; // 2 min
 
 /**
- * The Runs tab: new run form and runs list (left), timeline (center), approvals, budget and attention (right),
- * NOW bar, flow, console and detail panel (bottom).
+ * The Runs tab: new run form and runs list (left); Now panel, flow and timeline (center); approvals, budget and
+ * attention (right); console and detail panel (bottom). Every panel shows even with no run open.
  */
 @Component({
   selector: 'app-runs-page',
-  imports: [RunForm, ApprovalInbox, FlowDiagram, JsonPipe],
+  imports: [RunForm, ApprovalInbox, FlowDiagram, Follow, JsonPipe],
   templateUrl: './runs-page.html',
 })
 export class RunsPage {
@@ -69,6 +70,11 @@ export class RunsPage {
       .filter((meter) => typeof meter.max === 'number') // a limit the run detail does not name has no meter
       .map((meter) => ({ ...meter, text: `${meter.used} / ${meter.max}` }));
   });
+
+  /** Changes when the timeline grows: a new event, or the final answer, which comes later with the run detail. */
+  readonly timelineSize = computed(
+    () => this.store().events().length + (this.detail()?.final != null ? 1 : 0),
+  );
 
   readonly consoleEvents = computed(() => {
     const events = this.store().events();

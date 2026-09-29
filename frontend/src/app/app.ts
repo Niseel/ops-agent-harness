@@ -11,7 +11,7 @@ export type Tab = 'runs' | 'eval' | 'incidents';
   template: `
     <header class="app-header">
       <h1>Ops Agent Harness</h1>
-      <nav class="tabs" aria-label="Tabs">
+      <nav id="tabs" class="tabs" aria-label="Tabs">
         @for (t of tabs; track t.id) {
           <button
             type="button"

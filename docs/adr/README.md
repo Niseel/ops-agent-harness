@@ -19,7 +19,7 @@ One file per decision. Each record says what problem we had, what we considered,
 | [0012](0012-fault-injection-per-run.md) | Fault injection per run | Accepted (`embeddings` fault added) |
 | [0013](0013-recovery-interrupted-runs.md) | Recovery: interrupted runs resume by hand | Accepted (decisions survive a crash, M3) |
 | [0014](0014-observability-trace-events.md) | Observability: trace events + JSON logs | Accepted |
-| [0015](0015-ui-run-console-not-chat.md) | UI concept: run console with approval inbox, not a chat | Accepted |
+| [0015](0015-ui-run-console-not-chat.md) | UI concept: run console with approval inbox, not a chat | Accepted (one-screen layout, M6) |
 | [0016](0016-ui-angular.md) | UI tech: Angular | Accepted |
 | [0017](0017-docs-postman-ci.md) | Docs in repo, Postman collection, CI | Accepted (plan doc replaced by 0018; Qdrant container serves the end-to-end job, M5) |
 | [0018](0018-adopt-ai-sdlc-workflow.md) | Adopt the AI-SDLC workflow | Accepted (`/feature` adapted; saved traces hold the run's incidents, M5) |
