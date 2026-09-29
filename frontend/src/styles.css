@@ -205,6 +205,7 @@ pre {
 /* Header and tabs */
 .app-header {
   display: flex;
+  flex-wrap: wrap; /* narrow windows: Help moves to a second row instead of off screen */
   align-items: center;
   gap: 16px;
   padding: 8px 16px;
@@ -220,6 +221,10 @@ pre {
 .tabs {
   display: flex;
   gap: 4px;
+}
+
+.help {
+  margin-left: auto;
 }
 
 .tabs button[aria-current='page'] {
@@ -758,4 +763,96 @@ button[aria-pressed='true'] {
 
 .countdown {
   margin-left: auto;
+}
+
+/* Help tour: a modal dialog over the whole window; the ring dims everything but its target. */
+dialog.tour {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100dvh;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  overflow: hidden;
+}
+
+dialog.tour::backdrop {
+  background: transparent;
+}
+
+body:has(dialog.tour[open]) {
+  overflow: hidden;
+}
+
+.tour-ring {
+  position: fixed;
+  pointer-events: none;
+  border-radius: 8px;
+  outline: 3px solid var(--accent);
+  box-shadow: 0 0 0 100vmax rgb(0 0 0 / 0.4);
+  transition:
+    top 0.2s ease,
+    left 0.2s ease,
+    width 0.2s ease,
+    height 0.2s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tour-ring {
+    transition: none;
+  }
+}
+
+.tour-card {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(26rem, 100vw - 2rem);
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.25);
+}
+
+.tour-card[data-place='bottom'] {
+  bottom: 1rem;
+}
+
+.tour-card[data-place='top'] {
+  top: 1rem;
+}
+
+.tour-card[data-place='center'] {
+  top: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.tour-card .panel-head {
+  margin: 0;
+}
+
+.tour-card h2 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.tour-card p {
+  margin: 0;
+}
+
+.tour-card .row {
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.tour-card .row .muted {
+  margin-right: auto;
 }

@@ -298,7 +298,7 @@ Every state-changing call (create run, decide, resume, cancel, start evaluation)
 
 ### UI
 
-A run console, not a chat ([0015](../docs/adr/0015-ui-run-console-not-chat.md), [0016](../docs/adr/0016-ui-angular.md)). Angular, served by FastAPI in production. Tabs: Runs, Evaluation, Incidents.
+A run console, not a chat ([0015](../docs/adr/0015-ui-run-console-not-chat.md), [0016](../docs/adr/0016-ui-angular.md)). Angular, served by FastAPI in production. Tabs: Runs, Evaluation, Incidents. Help, at the top right, starts a guided tour of the page.
 
 - Left: new run form (objective, LLM mode, fault switches, limits, evaluate) and the runs list, each run with its status in colour, icon and word.
 - Center, from the top: the Now panel with the actor at work (the LLM, the harness or a person), what it does, the NOW bar (running tool, arguments, attempt) and the LLM's last choice; when the run ends it becomes the Result panel: the status in colour, icon and word, the error in words, the final answer, the incident created and the evaluation badges. Then the flow diagram with one node per tool and knowledge-base sub-steps, and the run timeline with each LLM decision and each tool call (name, arguments, attempts, result, duration, evaluation badges).
@@ -381,9 +381,10 @@ Each AC names how it is proved. Unit and API tests run with `ScriptedLLM` or `Fa
   - from 1280×720 CSS pixels up the Runs tab fits the window: the page does not scroll, panels scroll inside, and the timeline and the console keep the newest step in view;
   - the LLM, the harness, the tools and the person have one colour each, and every text colour keeps a contrast of at least 4.5:1 in the light and the dark theme;
   - the Now panel says at each moment whether the LLM, the harness or a person is working, on which tool and attempt, and what the LLM chose last;
-  - when the run ends, the Result panel shows the status in colour, icon and word, the error in words, the final answer and the incident created.
+  - when the run ends, the Result panel shows the status in colour, icon and word, the error in words, the final answer and the incident created;
+  - Help, at the top right, starts a tour that highlights each panel in turn; Esc closes it and focus returns to Help.
 
-  Proved by frontend unit tests of the event store (event → node state, NOW bar, actor, attention), backend tests of the fake LLM's wait, a colour-contrast test, and the manual steps in `docs/REVIEW_GUIDE.md`.
+  Proved by frontend unit tests of the event store (event → node state, NOW bar, actor, attention), backend tests of the fake LLM's wait, a colour-contrast test, tests of the tour, and the manual steps in `docs/REVIEW_GUIDE.md`.
 - **AC-14** (R16) Given the knowledge base is indexed:
   - when a query contains an exact term that appears in only one runbook (such as an error code), then that runbook is in the top 3 with `ranks.bm25 <= 3`;
   - when a query paraphrases a runbook with no shared keywords, then that runbook is in the top 3 with `ranks.dense <= 3` (a `live` test with a real embedding model);

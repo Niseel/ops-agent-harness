@@ -75,4 +75,55 @@ describe('App', () => {
     await fixture.whenStable();
     expect(root.querySelector('[data-tab="eval"]')!.textContent).toContain('1/5 questions');
   });
+
+  describe('Help', () => {
+    beforeEach(() => {
+      HTMLDialogElement.prototype.showModal = function (this: HTMLDialogElement) {
+        this.open = true;
+      };
+      HTMLDialogElement.prototype.close = function (this: HTMLDialogElement) {
+        this.open = false;
+        this.dispatchEvent(new Event('close'));
+      };
+    });
+    afterEach(() => {
+      delete (HTMLDialogElement.prototype as Partial<HTMLDialogElement>).showModal;
+      delete (HTMLDialogElement.prototype as Partial<HTMLDialogElement>).close;
+    });
+
+    it('sits in the header after the tabs, outside them', async () => {
+      const fixture = TestBed.createComponent(App);
+      await fixture.whenStable();
+      const root = fixture.nativeElement as HTMLElement;
+      const header = root.querySelector('header.app-header')!;
+      const help = header.querySelector<HTMLButtonElement>('button.help')!;
+      expect(help.textContent?.trim()).toBe('Help');
+      expect(help.getAttribute('aria-haspopup')).toBe('dialog');
+      expect(help.closest('.tabs')).toBeNull();
+      expect(header.querySelector('nav#tabs')?.nextElementSibling).toBe(help);
+    });
+
+    it('shows the Runs tab, opens the tour, and gives focus back to Help when the tour closes', async () => {
+      const fixture = TestBed.createComponent(App);
+      await fixture.whenStable();
+      const root = fixture.nativeElement as HTMLElement;
+      root.querySelectorAll<HTMLButtonElement>('.tabs button')[1].click(); // Evaluation
+      await fixture.whenStable();
+      const help = root.querySelector<HTMLButtonElement>('button.help')!;
+      help.click();
+      await fixture.whenStable();
+
+      const dialog = root.querySelector('dialog.tour') as HTMLDialogElement;
+      expect(dialog.open).toBe(true);
+      expect(fixture.componentInstance.tab()).toBe('runs');
+      expect(root.querySelector<HTMLElement>('main > section[data-tab="runs"]')!.hidden).toBe(
+        false,
+      );
+      expect(document.activeElement?.textContent?.trim()).toBe('Next');
+
+      dialog.close(); // Esc ends in this event
+      await fixture.whenStable();
+      expect(document.activeElement).toBe(help);
+    });
+  });
 });
