@@ -10,6 +10,7 @@ Library research (checked 2026-09-27 on PyPI, upstream source at release tags, t
 - plans/m2-kb-and-eval.md: qdrant-client 1.19.1, ragas 0.4.3, instructor 1.17.0, the langchain-community pin.
 - plans/m3-approval-api-cli.md: FastAPI 0.141.1 native SSE, Starlette 1.7.0, httpx2 2.13.1, uvicorn 0.54.0, LangGraph interrupt rules.
 - plans/m4-ui.md (checked 2026-09-28): Angular 22.2.0 (TypeScript `>=6.0 <6.1` while npm `latest` TypeScript is 7.x; Vite 8.3; Vitest 5 with jsdom by default; zoneless and OnPush by default), FastAPI's SSE wire format, EventSource rules.
+- plans/m5-ship.md (checked 2026-09-28): Node 24.21.0 LTS / 26.10.0 Current, uv 0.12.19 and its Docker guide, `actions/setup-node` v7.0.0, `astral-sh/setup-uv` v10.2.0, Qdrant server v1.19.1 (image has no curl), Starlette `StaticFiles`, newman 6.2.2, Docker Desktop 4.91.0 on this machine.
 
 Facts M4/M5 planning will need again:
 - Runtime `context=` is not checkpointed: pass it on every `ainvoke`, resumes with `Command(resume=...)` included.

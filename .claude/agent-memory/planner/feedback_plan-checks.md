@@ -1,6 +1,6 @@
 ---
 name: plan-checks
-description: Checks that found real gaps when the planner reviewed milestone plans (M1–M3 phase 1, 2026-09-27; M4 UI phase 1, 2026-09-28); run them on every plans/mN-*.md review
+description: Checks that found real gaps when the planner reviewed milestone plans (M1–M3 phase 1, 2026-09-27; M4 UI and M5 ship phase 1, 2026-09-28); run them on every plans/mN-*.md review
 metadata:
   type: feedback
 ---
@@ -41,7 +41,19 @@ Added in M4 phase 1 (2026-09-28, UI plan):
 - A draft with a final "specs" task: move each spec into the task that builds the behaviour, then fix plans/README's cut list, which may name the removed task.
 - Scaffold commands must pass every option so nothing prompts (and `--skip-git`, AI-config off, analytics off).
 
-Validated approach (owner accepted every default in M1 and M2 round 1, 2026-09-27): write each question's recommended default into the rules before asking, and list what each other answer would change. Finalizing is then small: mark the rules "(owner, round 1)", set Open questions to "None" with a one-line record, add a Pipeline log row, and re-check wording that the answers touch (spec notes, handoffs, test details).
+Added in M5 phase 1 (2026-09-28, ship plan):
+- Graders must be falsifiable. For each scenario ask "does its expect block still pass if the fault or decision never fires?" A malformed-reply scenario that only checks `completed`, an injection scenario with no check that an approval was asked, and an incident count read from the trace after `timeout_after_commit` (the first attempt carries no id) all passed vacuously. Fix with checks from the trace (decision events vs the decisions list, `llm` event counts) or data from the real system (incidents API).
+- Environment-dependent scenarios: without an embedding endpoint the index is BM25-only, every search is `sparse_only`, and the `embeddings` fault never fires. Say where each scenario really exercises its fault, and run it both ways.
+- New scenario or demo objectives: reuse the ones already listed in `test_kb.py` (`PLAIN_OBJECTIVES`), which guard the injected-document ranking; a new objective needs that list updated.
+- ADR wording vs handoffs again: ADR 0017 said "backend tests with a Qdrant service container", but pytest uses in-memory Qdrant; the container belongs to an end-to-end job, plus a status note.
+- Scripts for macOS: bash 3.2 (`set -u` makes an empty array unbound; no `mapfile`); macOS 15 has `/usr/bin/jq`.
+- Docker checks: publish an unauthenticated API (and Qdrant) on 127.0.0.1; a non-root user needs its state directory created and chowned in the image (named volumes copy that ownership); startup work (ingest) needs `depends_on: service_healthy`; the Qdrant image has no curl (bash `/dev/tcp` healthcheck).
+- A `StaticFiles` mount at `/` after the routers: GET on a missing path still reaches the JSON 404 handler, but POST gets 405.
+- "Clean clone" proof before the commit exists: `git add -A && git archive "$(git write-tree)" | tar -x -C <dir>` exports exactly what the commit will hold.
+- CI changes cannot run before the owner pushes: plan a YAML parse, the commands by hand, and a fix commit if the first run fails.
+- Agents cannot open `.env.*`: plans must not need an edit to `.env.example`.
+
+Validated approach (owner accepted every default in M1 and M2 round 1, 2026-09-27, and all four in M5 round 1, 2026-09-28): write each question's recommended default into the rules before asking, and list what each other answer would change. Finalizing is then small: mark the rules "(owner, round 1)", set Open questions to "None" with a one-line record, add a Pipeline log row, and re-check wording that the answers touch (spec notes, handoffs, test details).
 
 **Why:** coding agents follow task rows literally; each task must pass its own tests at its own commit.
 **How to apply:** walk every Proof row and ask "which commit makes this test pass?", every file a task imports and ask "which task created it?", and every existing test that touches the changed path and ask "does its assertion still hold?". See also [[library-notes-pointer]].

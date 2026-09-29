@@ -199,8 +199,12 @@ class Runner:
 
     async def request_resume(self, run_id: str, *, actor: str) -> dict:
         """`interrupted` -> `running`. The caller then runs `continue_run` (the API spawns it, the CLI awaits it)."""
-        if await self.store.get_run(run_id) is None:
+        run = await self.store.get_run(run_id)
+        if run is None:
             raise NotFound(f"run {run_id} not found")
+        # From the row first, like cancel: a final run in online evaluation holds its lock for minutes.
+        if run["status"] != RunStatus.INTERRUPTED:
+            raise Conflict(f"run {run_id} is {run['status']}, not interrupted")
         async with self._locks[run_id]:  # like decide: the write and its event stay together
             if not await self.store.resume_run(run_id):
                 raise Conflict(f"run {run_id} is {(await self.store.get_run(run_id))['status']}, not interrupted")

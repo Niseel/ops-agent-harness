@@ -30,9 +30,8 @@ cd frontend && npm ci                     # install
 cd frontend && npm test -- --watch=false  # tests
 cd frontend && npm run build              # build and type check
 cd frontend && npx prettier --check src   # format (--write to fix)
+evals/run.sh                              # scenario evals; needs the API on :8000 (fake LLM)
 ```
-
-Eval commands are added by the milestone that introduces them.
 
 ### Rules
 - A milestone starts when the owner runs `/feature plans/mN-*.md`; follow that skill's phases.

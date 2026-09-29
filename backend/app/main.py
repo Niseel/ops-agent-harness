@@ -1,16 +1,18 @@
 import asyncio
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app import log
 from app.api import MaskedJSONResponse, eval, meta, runs
-from app.config import cfg, settings
+from app.config import ROOT, cfg, settings
 from app.harness.runner import Conflict, NotFound, Runner
 from app.kb import qdrant
 from app.kb.ingest import ingest
@@ -81,3 +83,15 @@ async def internal_error(request: Request, exc: Exception) -> MaskedJSONResponse
 app.include_router(runs.router)
 app.include_router(eval.router)
 app.include_router(meta.router)
+
+# The built UI (`npm run build`). Mounted last, so every `/api` route matches first; no fallback to index.html,
+# since the UI has no client routes.
+UI_DIR = ROOT / "frontend" / "dist" / "frontend" / "browser"
+
+
+def serve_ui(directory: Path) -> None:
+    app.mount("/", StaticFiles(directory=directory, html=True), name="ui")
+
+
+if UI_DIR.is_dir():  # StaticFiles refuses a missing directory
+    serve_ui(UI_DIR)

@@ -1,0 +1,7 @@
+{
+  "name": "approve-incident",
+  "objective": "payments-api is returning 5xx errors. Investigate and open an incident if needed.",
+  "llm": "fake",
+  "decisions": [{"decision": "approve"}],
+  "expect": {"status": "completed", "attempts": {"create_incident": 1}, "incidents": 1}
+}

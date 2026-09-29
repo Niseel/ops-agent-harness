@@ -139,3 +139,37 @@ Found in the M4 T6 review (2026-09-28), carry into M5 and any `fetch`-stream rea
 - A `getReader()` loop that throws (JSON.parse of a bad `data:` line, an `onEvent` throw) never calls `reader.cancel()`: the POST stays open, the server job (golden eval, ~10 min with a local judge) keeps running, and the re-enabled button lets a second job start. Check for `try/finally reader.cancel()` on error.
 - A stream that ends cleanly with neither its terminal event (`report`) nor `error` resolves silently: progress freezes at n/total with no message. Check the caller tracks "terminal event seen".
 - Spec files a task adds are easy to leave out of the plan's "Files that change" (T2 fixture, T6 eval/incidents specs); grep the plan for each new file.
+
+Found in the M5 T1 review (2026-09-28), carry into T4 (README/DESIGN) and any Docker/compose change:
+
+- Compose `env_file: .env` passes the host's `.env` into the container as is; only `QDRANT_URL` and `DB_PATH` are overridden. `LLM_DEFAULT=openai` (localhost URLs) or absolute host `DATA_DIR`/`CONFIG_PATH` break the container (config_path is read at import). Agents cannot read `.env`; check `docker compose exec -T app printenv <non-secret keys>` instead (never plain `env`: secrets).
+- Host API and container share Qdrant's `ops_kb` collection. The container skips ingest only when `content_hash` (docs + EMBED_MODEL) matches; after a data/kb edit without a rebuild, or another EMBED_MODEL, it deletes the hybrid index and rebuilds BM25-only (its embeddings fail), and the running host API silently drops to `sparse_only` (`_has_dense` read per search). Self-heals on the next host start (BM25-only is never skipped).
+- `/api/health` `kb.mode` `sparse_only` in the container does not mean the index is BM25-only: health downgrades `hybrid` when embeddings are unreachable. Check the collection itself: `curl 127.0.0.1:6333/collections/ops_kb` (`vectors.dense`) and scroll one payload's `embed_model`.
+- Read-only container probes that worked: `docker compose exec -T app sh -c 'id; find / -xdev -writable ...; cat /proc/1/cmdline'`; traversal via `curl --path-as-is` with `..`, `%2e%2e`, `%2f` (StaticFiles: realpath + commonpath, `follow_symlink=False`).
+
+Found in the M5 T2 review (2026-09-28), carry into T3/T4 CI jobs:
+
+- CI jobs cannot run locally; proof is `yaml.safe_load` plus the job's commands in a matching container. A `--platform linux/amd64` run under QEMU on Apple Silicon is 15-20x slower, so vitest 5 s timeouts there are not a signal; compare the slowest native test time instead.
+- Workflow style: first-party actions on moving major tags (`checkout@v7`, `setup-node@v7`), third-party pinned to a release (`setup-uv@v10.2.0`), no SHA pins, workflow-level `permissions: contents: read`, no `timeout-minutes` anywhere. Judge new jobs for consistency with this, not a rewrite.
+
+Found in the M5 T3 review (2026-09-28), carry into T4 (newman step, README eval commands) and any shell script:
+
+- Shell scripts that pass an API list as one argv value (`jq --argjson x "$body"`) break on Linux once the body passes 128 KB (MAX_ARG_STRLEN, per argument; macOS only caps the 1 MB total). `run.sh` passes all of `GET /api/incidents` (~330 B each, unpaginated), so a long-lived Linux or Docker DB with ~400 incidents fails every scenario with misleading FAILs (the `>` redirect truncates the out file first). Probe: `docker run --rm node:24-slim bash -c 'x=$(head -c 140000 /dev/zero | tr "\0" a); /bin/echo "$x"'`. Fix: feed large JSON through stdin or `--slurpfile <(printf %s "$body")`.
+- Probes that worked for `evals/run.sh`: scratch API on :8010 (`DB_PATH=<scratchpad> LLM_DEFAULT=fake uv run uvicorn ...`, background, `pkill -f` after), `BASE_URL=http://localhost:8010 /bin/bash evals/run.sh <scratch scenarios>` built with `jq` from the real files: decision left but no pause, pause with no decision, a 422 decision, missing file, no API. jq 1.7 `null | has("k")` is `false` (no error).
+
+Found in the M5 resume-hang fix review (2026-09-28):
+
+- Any runner entry that takes `_locks[run_id]` before reading the row can hang behind online evaluation (lock held after `done`, minutes with a slow judge) or a whole segment. Pattern: read the row, 404/409 first, then lock, then the conditional store update (it still decides races). As of this fix: cancel, decide and request_resume check the row first; sweep skips a held lock. Grep `_locks[` on every new lock user. Holding `runner._locks[id]` in a test is the accepted way to simulate a busy run (test_lifecycle, test_api, test_recovery).
+
+Found in the M5 T4 review (2026-09-29), carry into any doc with measured numbers or run steps:
+
+- Eval prose drifts kinder than the table: ADR 0005 said "dense ranks as well as hybrid" while dense MRR 1.00 > hybrid 0.97, and the one hybrid rank-2 is the paraphrase question the prose sells as a hybrid win (BM25's wrong top pulled into RRF first). Check each sentence against the report rows (`sqlite3 -readonly data/harness.db "select rows_json from eval_reports where id=..."`, rows have `rr@10`, `mode_used`, `retrieved_doc_ids`). Unit tests use `FakeEmbedder` (hashed bag of words), so they never show hybrid beating real dense. Keyword-overlap claims ("no shared keywords"): check with `app.kb.sparse.tokens` on query and doc (no stop words, no stemming), not by eye.
+- `main.py` mounts the built UI at import (`UI_DIR.is_dir()`): an API started before `npm run build` serves no UI until restarted. Check README order.
+- Scratch API that mimics CI without touching the owner's `ops_kb`: copy config.yaml with another `kb.collection`, `CONFIG_PATH=<copy> EMBED_BASE_URL=JUDGE_BASE_URL=http://127.0.0.1:9/v1`, then DELETE that collection after.
+
+Found in the M5 T5 review (2026-09-29), carry into any review-guide or docs-test change:
+
+- A `file:symbol` can exist and still point one hop off: R6 named `Runner.run_segment` for the segment timeout, which lives in `Runner._segment` (shared with `continue_run`). Open each symbol and find the line that does what the row says.
+- Replacing `test_x.py::*` with hand-picked names silently drops AC bullets (R7 lost AC-9 expiry/cancel and AC-10 idempotency, R6 lost the clamp test). Diff the row's test list against the plans' Proof rows for every AC bullet the row claims.
+- `test_docs.py` Python symbol regex `^\s*name\s*[:=]` matches keyword-argument lines (`run_id=run_id,`), so `runner.py:Runner.run_id` passes; the dotted class part is never checked. Probe with `tests.test_docs._defines(path, name)`.
+- `Built in` values: map a test to its milestone with `git grep -q "def name(" <merge-sha>` over the first-parent merges (git grep ERE has no `\b`).

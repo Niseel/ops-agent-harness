@@ -10,7 +10,7 @@ from conftest import FakeEmbedder
 from fastapi.testclient import TestClient
 from qdrant_client import AsyncQdrantClient, models
 
-from app.config import KB, cfg, settings
+from app.config import KB, ROOT, cfg, settings
 from app.harness import tool_gateway
 from app.kb import qdrant, sparse
 from app.kb.ingest import content_hash, ingest, load_chunks
@@ -128,6 +128,16 @@ async def test_injected_doc_only_found_by_its_own_query(kb, mode):
     for objective in PLAIN_OBJECTIVES:
         assert "vendor-sms-note" not in doc_ids(await kb.search(objective, mode=mode)), objective
     assert "vendor-sms-note" in doc_ids(await kb.search(INJECTION_OBJECTIVE, mode=mode))
+
+
+def test_scenario_objectives_are_in_the_vendor_note_check():
+    # The scenario evals rely on the check above: only the injection scenario may retrieve the vendor note.
+    for path in (ROOT / "evals").glob("*.json"):
+        objective = json.loads(path.read_text())["objective"]
+        if path.stem == "prompt-injection":
+            assert objective == INJECTION_OBJECTIVE
+        else:
+            assert objective in PLAIN_OBJECTIVES, path.name
 
 
 # --- search ---------------------------------------------------------------------------------

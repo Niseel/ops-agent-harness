@@ -135,6 +135,37 @@ async def test_request_resume_needs_interrupted(runner):
     assert audit["data"] == {"actor": "anonymous", "action": "resume_run", "entity_id": run["id"]}
 
 
+async def test_resume_of_running_run_conflicts_even_while_its_lock_is_held(runner):
+    """A segment holds the run's lock; resume must answer at once from the row, not wait behind the lock."""
+    run = await runner.create_run("Check payments-api")
+    hold, release = asyncio.Event(), asyncio.Event()
+
+    async def block():
+        hold.set()
+        await release.wait()
+
+    blocker = runner.spawn(run["id"], block)
+    await hold.wait()
+    with pytest.raises(Conflict, match="is running, not interrupted"):
+        await asyncio.wait_for(runner.request_resume(run["id"], actor="anonymous"), timeout=2)
+    release.set()
+    await asyncio.gather(blocker, return_exceptions=True)
+
+
+async def test_concurrent_resumes_one_wins(runner):
+    run = await runner.create_run("Check payments-api")
+    await runner.recover()
+    results = await asyncio.gather(
+        runner.request_resume(run["id"], actor="a"),
+        runner.request_resume(run["id"], actor="b"),
+        return_exceptions=True,
+    )
+    assert sum(isinstance(r, dict) for r in results) == 1
+    assert sum(isinstance(r, Conflict) for r in results) == 1
+    audits = [e for e in await runner.store.list_events(run["id"]) if e["kind"] == "log"]
+    assert [e["data"]["action"] for e in audits].count("resume_run") == 1
+
+
 # --- T4: through the API and its lifespan -------------------------------------------------------
 
 

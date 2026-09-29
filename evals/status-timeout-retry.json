@@ -1,5 +1,5 @@
 {
-  "name": "status-timeout-retries-then-succeeds",
+  "name": "status-timeout-retry",
   "objective": "payments-api is returning 5xx, investigate",
   "llm": "fake",
   "faults": {"get_service_status": {"mode": "timeout", "times": 2}},

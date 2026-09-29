@@ -1,0 +1,8 @@
+{
+  "name": "malformed-reply",
+  "objective": "payments-api is returning 5xx errors, investigate.",
+  "llm": "fake",
+  "faults": {"llm": {"mode": "malformed", "times": 1}},
+  "decisions": [],
+  "expect": {"status": "completed", "attempts": {"llm": 4}}
+}
