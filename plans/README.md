@@ -10,7 +10,7 @@ How the work in [specs/ops-agent-harness.md](../specs/ops-agent-harness.md) is s
 | [m3-approval-api-cli](m3-approval-api-cli.md) | `feat/m3-approval-api-cli` | Approval decisions, REST API with live events, recovery, CLI | 6 | 5.5h | done |
 | [m4-ui](m4-ui.md) | `feat/m4-ui` | Run console UI | 6 | 5.5h | done |
 | [m5-ship](m5-ship.md) | `chore/m5-ship` | Docker, CI, scenario evals, final docs and review guide | 5 | 4h | done |
-| [m6-ui-upgrade](m6-ui-upgrade.md) | `feat/m6-ui-upgrade` | One-screen Runs tab, colours per actor, who-is-working and result panels, guided tour, paced fake LLM | 6 | 6h | approved |
+| [m6-ui-upgrade](m6-ui-upgrade.md) | `feat/m6-ui-upgrade` | One-screen Runs tab, colours per actor, who-is-working and result panels, guided tour, paced fake LLM | 6 | 6h | done |
 | **Total** | | | **41** | **40.5h** | |
 
 ## Where each acceptance criterion is built
