@@ -7,7 +7,7 @@ One file per decision. Each record says what problem we had, what we considered,
 | [0000](0000-record-architecture-decisions.md) | Record architecture decisions | Accepted |
 | [0001](0001-backend-python-fastapi.md) | Backend: Python 3.12 + FastAPI + uv | Accepted |
 | [0002](0002-agent-loop-langgraph-custom-nodes.md) | Agent loop: LangGraph engine, our own nodes | Accepted |
-| [0003](0003-llm-openai-compatible-with-fake.md) | LLM: raw OpenAI SDK, any OpenAI-compatible provider, fake by default | Accepted (FakePlanner incident rule changed) |
+| [0003](0003-llm-openai-compatible-with-fake.md) | LLM: raw OpenAI SDK, any OpenAI-compatible provider, fake by default | Accepted (FakePlanner incident rule changed; reply wait added in M6) |
 | [0004](0004-state-and-database-sqlite.md) | State and database design: SQLite | Accepted |
 | [0005](0005-kb-search-hybrid-rag.md) | Knowledge base search: hybrid RAG (dense + BM25, RRF) | Accepted |
 | [0006](0006-vector-store-qdrant-no-rerank.md) | Vector store: Qdrant server, no reranker | Accepted |

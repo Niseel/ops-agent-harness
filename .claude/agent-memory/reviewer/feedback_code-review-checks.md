@@ -173,3 +173,8 @@ Found in the M5 T5 review (2026-09-29), carry into any review-guide or docs-test
 - Replacing `test_x.py::*` with hand-picked names silently drops AC bullets (R7 lost AC-9 expiry/cancel and AC-10 idempotency, R6 lost the clamp test). Diff the row's test list against the plans' Proof rows for every AC bullet the row claims.
 - `test_docs.py` Python symbol regex `^\s*name\s*[:=]` matches keyword-argument lines (`run_id=run_id,`), so `runner.py:Runner.run_id` passes; the dotted class part is never checked. Probe with `tests.test_docs._defines(path, name)`.
 - `Built in` values: map a test to its milestone with `git grep -q "def name(" <merge-sha>` over the first-parent merges (git grep ERE has no `\b`).
+
+Found in the M6 T1 review (2026-09-29):
+
+- No pytest-timeout and no CI `timeout-minutes`: any test that awaits a queue or event with no bound (`await events.get()` in a `while` loop on `tracer.subscribe`) hangs the suite for GitHub's 6 h default when the awaited event never comes. Repo idiom is `asyncio.wait_for(..., 5)`. Probe: a scratch copy that patches `runner.run_segment` to raise before the stage event.
+- Pydantic lax mode on config tuples: `["300", "500"]` and `[True, 5]` coerce; consistent with other config keys (Strict only forbids extras), not a finding.

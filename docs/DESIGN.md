@@ -119,7 +119,7 @@ The routes, request bodies, status codes and errors are defined once, in the [sp
 
 Two sources ([backend/app/config.py](../backend/app/config.py)):
 
-- **`config.yaml`**, behaviour, versioned with the code: limits, retries, timeouts per tool, search, approval TTL, output size, evaluation. Unknown keys stop the app at startup.
+- **`config.yaml`**, behaviour, versioned with the code: limits, retries, timeouts per tool, search, approval TTL, output size, evaluation, and the fake LLM's wait before each reply. Unknown keys stop the app at startup.
 - **Environment variables** (or `.env`, see [.env.example](../.env.example)), deployment: endpoints, keys, paths. Relative paths are resolved from the repo root.
 
 | Variable | Default | Purpose |
@@ -158,7 +158,7 @@ Two sources ([backend/app/config.py](../backend/app/config.py)):
 - **Search needs services.** Hybrid search needs Qdrant and an embedding endpoint; without embeddings it falls back to BM25. There is no reranker.
 - **No PII handling.** Objectives, tool output and events are stored and sent to the configured models as they are. Use synthetic data or a local model.
 - **Prompt injection is only contained, not detected.** The approval gate stops the only side effect; nothing flags injected text.
-- **Fake LLM.** `FakePlanner` follows fixed rules to show the harness mechanics, not model quality. Some local models write tool calls as text; those are not parsed.
+- **Fake LLM.** `FakePlanner` follows fixed rules to show the harness mechanics, not model quality. Some local models write tool calls as text; those are not parsed. It waits 300–500 ms before each reply (`llm.fake_delay_ms`), so a run can be followed in the UI; `[0, 0]` removes the wait.
 - **Evaluation quality.** RAGAS scores depend on the judge model; the golden set has 16 questions.
 - **Manual recovery.** Runs interrupted by a crash wait for someone to resume them.
 - **One process drives a run.** The per-run lock lives in memory. A CLI run decided through the API continues in the API process, and starting the API while a CLI run is `running` marks it `interrupted`.

@@ -1,5 +1,6 @@
 import asyncio
 import json
+import time
 from dataclasses import replace
 from functools import partial
 
@@ -9,7 +10,7 @@ from conftest import FakeJudge, wait_for_status
 from app.config import cfg
 from app.eval import metrics
 from app.harness.runner import Conflict, NotFound, Runner
-from app.llm.fake import ScriptedLLM, calls, final
+from app.llm.fake import FakePlanner, ScriptedLLM, calls, final
 from app.tools import registry
 
 INCIDENT = {"title": "payments-api is degraded", "description": "p95 2400 ms, error rate 12%.", "severity": "SEV2"}
@@ -107,6 +108,22 @@ async def test_cancel_running_segment_writes_one_done(runner, monkeypatch):
         await runner.cancel(run["id"], actor="anonymous")
     with pytest.raises(NotFound):
         await runner.cancel("nope", actor="anonymous")
+
+
+async def test_cancel_during_the_fake_llm_wait(runner, monkeypatch):
+    monkeypatch.setattr(cfg.llm, "fake_delay_ms", (60_000, 60_000))  # the real sleep; only the cancel ends it
+    run = await runner.create_run("Check payments-api")
+    events = runner.tracer.subscribe(run["id"])
+    runner.spawn(run["id"], partial(runner.run_segment, run["id"], llm_client=FakePlanner()))
+    async with asyncio.timeout(5):  # fail, not hang, if the stage never comes
+        while not ((e := await events.get())["kind"] == "stage" and e["node"] == "agent"):
+            pass
+    started = time.monotonic()
+    assert await runner.cancel(run["id"], actor="anonymous") == {"run_id": run["id"], "status": "cancelled"}
+    assert time.monotonic() - started < 1
+    assert (await runner.store.get_run(run["id"]))["status"] == "cancelled"
+    trail = await kinds(runner, run["id"])
+    assert "llm" not in trail and trail.count("done") == 1
 
 
 async def test_cancel_during_online_evaluation_conflicts(runner, search, monkeypatch):

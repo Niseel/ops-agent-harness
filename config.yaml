@@ -14,6 +14,7 @@ llm:
   temperature: 0
   timeout_s: 30
   max_attempts: 3           # transient API errors only
+  fake_delay_ms: [300, 500] # fake LLM only: random wait (ms) before each reply, so a person can follow a run; [0, 0] = none
 
 retry:                      # exponential backoff with full jitter
   base_delay_s: 0.2

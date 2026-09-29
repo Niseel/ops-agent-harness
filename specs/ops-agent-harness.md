@@ -151,7 +151,7 @@ Retries use exponential backoff with full jitter (`retry.base_delay_s`, `retry.m
 Modes, chosen per run; default from `LLM_DEFAULT` ([0003](../docs/adr/0003-llm-openai-compatible-with-fake.md)):
 
 - `openai`: `openai.AsyncOpenAI` chat completions with tools, against any OpenAI-compatible endpoint (`LLM_*` env vars).
-- `fake`: `FakePlanner`, rule-based. Searches the knowledge base, checks the service named in the objective, and proposes an incident only if the objective asks for one (contains "incident") and the service is `degraded` or `down` (severity from the policy it found). If a search result contains an instruction to open an incident, it follows it and proposes that incident: it imitates a model that falls for prompt injection, so the approval gate can be shown stopping it. Then it answers.
+- `fake`: `FakePlanner`, rule-based. Searches the knowledge base, checks the service named in the objective, and proposes an incident only if the objective asks for one (contains "incident") and the service is `degraded` or `down` (severity from the policy it found). If a search result contains an instruction to open an incident, it follows it and proposes that incident: it imitates a model that falls for prompt injection, so the approval gate can be shown stopping it. Then it answers. It waits a random 300–500 ms before each reply (`llm.fake_delay_ms` in `config.yaml`; `[0, 0]` turns the wait off), so a person can follow a run in the UI. The wait counts toward `llm.timeout_s` and `latency_ms`; tests set it to `[0, 0]`.
 - Tests use `ScriptedLLM`: a fixed list of replies.
 
 `llm_gateway` retries only transient errors (connection errors, timeouts, HTTP 408, 409, 429 and 5xx), up to `llm.max_attempts`, each attempt limited by `llm.timeout_s`; other API errors fail the call at once. When the call fails, the run fails with `llm_unavailable`. It classifies each reply:
@@ -374,9 +374,10 @@ Each AC names how it is proved. Unit and API tests run with `ScriptedLLM` or `Fa
 - **AC-13** (R12) Given the UI is open, when a user starts a run:
   - the timeline and the NOW bar update live with tool name, arguments and attempt number, and the flow diagram lights the running node;
   - a pending approval appears in the inbox and can be approved, edited or rejected from there;
-  - retries, failures, limits and `sparse_only` search are highlighted with colour, icon and text, as in the attention table above.
+  - retries, failures, limits and `sparse_only` search are highlighted with colour, icon and text, as in the attention table above;
+  - with the fake LLM each reply takes 300–500 ms (`llm.fake_delay_ms`), so a person can follow the run; a cancel during that wait still ends the run `cancelled`.
 
-  Proved by frontend unit tests of the event store (event → node state, NOW bar, attention) and by the manual steps in `docs/REVIEW_GUIDE.md`.
+  Proved by frontend unit tests of the event store (event → node state, NOW bar, attention), backend tests of the fake LLM's wait, and the manual steps in `docs/REVIEW_GUIDE.md`.
 - **AC-14** (R16) Given the knowledge base is indexed:
   - when a query contains an exact term that appears in only one runbook (such as an error code), then that runbook is in the top 3 with `ranks.bm25 <= 3`;
   - when a query paraphrases a runbook with no shared keywords, then that runbook is in the top 3 with `ranks.dense <= 3` (a `live` test with a real embedding model);

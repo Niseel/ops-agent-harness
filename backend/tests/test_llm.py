@@ -4,6 +4,7 @@ import pytest
 from openai.types.chat import ChatCompletion
 
 import app.llm.openai_compat as openai_compat
+from app.config import cfg
 from app.harness.state import err, ok
 from app.llm.fake import FakePlanner, ScriptedLLM, calls, final, raw
 from app.llm.openai_compat import LLMReply, OpenAICompatClient, ToolCall, to_reply
@@ -285,6 +286,29 @@ async def test_fake_planner_objective_is_first_user_message():
     reply = await planner.complete(messages, _tools(["search_knowledge_base"]))
     args = json.loads(reply.tool_calls[0].arguments)
     assert args == {"query": "payments-api needs a look"}
+
+
+async def _waits(monkeypatch, delay_ms):
+    """The waits of one FakePlanner reply with `llm.fake_delay_ms` = delay_ms, recorded, not slept."""
+    waits = []
+
+    async def record(seconds):
+        waits.append(seconds)
+
+    monkeypatch.setattr(cfg.llm, "fake_delay_ms", delay_ms)
+    monkeypatch.setattr("app.llm.fake.sleep", record)
+    reply = await FakePlanner().complete([{"role": "user", "content": "check payments-api"}], _tools(ALL_TOOLS))
+    assert reply.tool_calls[0].name == "search_knowledge_base"  # the wait changes nothing else
+    return waits
+
+
+async def test_fake_planner_waits_in_the_configured_range(monkeypatch):
+    waits = await _waits(monkeypatch, (300, 500))
+    assert len(waits) == 1 and 0.3 <= waits[0] <= 0.5
+
+
+async def test_fake_planner_waits_nothing_when_the_range_is_zero(monkeypatch):
+    assert await _waits(monkeypatch, (0, 0)) == []
 
 
 async def test_openai_client_sets_max_retries_zero_and_omits_empty_tools(monkeypatch):

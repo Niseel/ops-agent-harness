@@ -89,6 +89,14 @@ class LLM(Strict):
     temperature: float = 0
     timeout_s: float = 30
     max_attempts: int = 3
+    fake_delay_ms: tuple[int, int] = (0, 0)  # fake LLM only: [min, max] wait before each reply
+
+    @field_validator("fake_delay_ms")
+    @classmethod
+    def _a_range(cls, v: tuple[int, int]) -> tuple[int, int]:
+        if not 0 <= v[0] <= v[1]:
+            raise ValueError(f"fake_delay_ms needs 0 <= min <= max, got {list(v)}")
+        return v
 
 
 class Retry(Strict):
