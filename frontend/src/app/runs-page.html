@@ -43,13 +43,22 @@
   <div class="center stack">
     <section class="panel now" aria-live="polite" aria-labelledby="now">
       <h2 id="now">Now</h2>
-      @if (runId()) {
-        <p class="mono">{{ nowText() || 'Waiting for the first event…' }}</p>
-      } @else {
-        <p class="muted">No run open. Start one on the left or pick one from the list.</p>
+      <p class="activity" aria-atomic="true">
+        @if (activity().actor !== 'none') {
+          <span [class]="'actor tag role-' + activity().actor"
+            ><span class="dot" aria-hidden="true">●</span> {{ actorWord[activity().actor] }}</span
+          >
+        }
+        <span [class.muted]="activity().actor === 'none'">{{ activity().text }}</span>
+      </p>
+      @if (live() && store().now().tool) {
+        <p class="mono now-line" [title]="nowText()">{{ nowText() }}</p>
+      }
+      @if (lastChoice(); as choice) {
+        <p class="last-choice" [title]="choice">{{ choice }}</p>
       }
     </section>
-    <section class="panel" aria-labelledby="flow">
+    <section class="panel flow-panel" aria-labelledby="flow">
       <h2 id="flow">Flow</h2>
       <app-flow-diagram [nodes]="store().nodes()" [active]="activeNode()" />
     </section>

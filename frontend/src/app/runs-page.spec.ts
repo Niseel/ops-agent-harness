@@ -516,6 +516,95 @@ describe('RunsPage', () => {
     });
   });
 
+  describe('who is working', () => {
+    it('shows the actor as a word with its colour, what it does, and the last LLM choice', async () => {
+      stubFetch({ detail: () => ({ id: 'r1', status: 'running', options: { limits: {} } }) });
+      const fixture = TestBed.createComponent(RunsPage);
+      await fixture.whenStable();
+      fixture.componentInstance.open('r1');
+      await fixture.whenStable();
+      const source = FakeEventSource.all.at(-1)!;
+      const root = fixture.nativeElement as HTMLElement;
+      const now = () => root.querySelector('#now')!.parentElement!;
+      const actor = () => now().querySelector('.actor');
+
+      source.send(ev('stage', { node: 'guard', data: { steps: 0 } }));
+      source.send(ev('stage', { node: 'agent' }));
+      await fixture.whenStable();
+      expect(actor()?.textContent?.trim()).toBe('● LLM');
+      expect(actor()?.classList.contains('role-llm')).toBe(true);
+      expect(actor()?.querySelector('.dot')?.getAttribute('aria-hidden')).toBe('true');
+      expect(now().querySelector('.activity')?.textContent).toContain('is thinking (turn 1)');
+
+      source.send(
+        ev('llm', {
+          node: 'agent',
+          status: 'tool_calls',
+          data: { tool_calls: [{ id: 'c1', name: 'get_service_status', args: { service: 'a' } }] },
+        }),
+      );
+      source.send(ev('stage', { node: 'tools' }));
+      await fixture.whenStable();
+      expect(actor()?.textContent?.trim()).toBe('● Harness');
+      expect(actor()?.classList.contains('role-harness')).toBe(true);
+      expect(now().textContent).toContain('runs get_service_status (attempt 1)');
+      const choice = now().querySelector('.last-choice')!;
+      expect(choice.textContent).toBe('Last LLM choice: get_service_status({"service":"a"})');
+      expect(choice.getAttribute('title')).toBe(choice.textContent);
+    });
+
+    it('shows the person while an approval waits', async () => {
+      stubFetch({
+        detail: () => ({ id: 'r1', status: 'awaiting_approval', options: { limits: {} } }),
+      });
+      const fixture = TestBed.createComponent(RunsPage);
+      await fixture.whenStable();
+      fixture.componentInstance.open('r1');
+      await fixture.whenStable();
+      FakeEventSource.all
+        .at(-1)!
+        .send(ev('approval', { node: 'approval', tool: 'create_incident', status: 'pending' }));
+      await fixture.whenStable();
+      const now = (fixture.nativeElement as HTMLElement).querySelector('#now')!.parentElement!;
+      expect(now.querySelector('.actor')?.textContent?.trim()).toBe('● Person');
+      expect(now.querySelector('.actor')?.classList.contains('role-person')).toBe(true);
+      expect(now.textContent).toContain(
+        'must approve, edit or reject create_incident in Approvals',
+      );
+    });
+
+    it("shows the done message, with no actor, once a final run's done event arrived", async () => {
+      stubFetch({ detail: () => ({ id: 'r1', status: 'completed', options: { limits: {} } }) });
+      const fixture = TestBed.createComponent(RunsPage);
+      await fixture.whenStable();
+      fixture.componentInstance.open('r1');
+      await fixture.whenStable();
+      FakeEventSource.all.at(-1)!.send(ev('done', { status: 'completed', msg: 'run completed' }));
+      await fixture.whenStable();
+      const now = (fixture.nativeElement as HTMLElement).querySelector('#now')!.parentElement!;
+      expect(now.querySelector('.actor')).toBeNull();
+      expect(now.querySelector('.activity')?.textContent?.trim()).toBe('run completed');
+    });
+
+    it('shows no actor for an interrupted run, and says the final answer was the last choice', async () => {
+      stubFetch({ detail: () => ({ id: 'r1', status: 'interrupted', options: { limits: {} } }) });
+      const fixture = TestBed.createComponent(RunsPage);
+      await fixture.whenStable();
+      fixture.componentInstance.open('r1');
+      await fixture.whenStable();
+      const source = FakeEventSource.all.at(-1)!;
+      source.send(ev('stage', { node: 'agent' }));
+      source.send(ev('llm', { node: 'agent', status: 'final', data: { tool_calls: [] } }));
+      await fixture.whenStable();
+      const now = (fixture.nativeElement as HTMLElement).querySelector('#now')!.parentElement!;
+      expect(now.querySelector('.actor')).toBeNull();
+      expect(now.textContent).toContain('interrupted: nothing runs now');
+      expect(now.querySelector('.last-choice')?.textContent).toBe(
+        'Last LLM choice: the final answer',
+      );
+    });
+  });
+
   describe('console', () => {
     async function openWithEvents() {
       stubFetch({ detail: () => ({ id: 'r1', status: 'running', options: { limits: {} } }) });

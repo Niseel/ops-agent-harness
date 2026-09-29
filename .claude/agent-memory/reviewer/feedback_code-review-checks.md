@@ -196,3 +196,9 @@ Found in the M6 T3 review (2026-09-29), carry into T4-T6 (actor badge, Result pa
 - A tester may mutate the working tree while you review (dark amber flipped, role classes gone, `cancelled` case removed, tests failing): wait until `git diff --stat` is back to the builder's numbers, then re-run.
 - Chrome over CDP on the scratch API: headless defaults to dark; `Emulation.setEmulatedMedia` `prefers-color-scheme: light` for the light theme; `getComputedStyle` gives `color(srgb r g b)` for `color-mix` results, feed those straight into the WCAG formula.
 - Round 2 (T3 fix): a stylesheet-scraping test that takes `max(N)` from one exact `color-mix(...)` pattern silently ignores any other form (another base, `oklab`, spacing). Ask for a guard: count of `color-mix(` equals count of matches. A fix that changes a planned number (tint 8% -> 4%, step 5 -> 4) leaves the plan's own body stale; grep the plan for the old value, not just the Pipeline log.
+
+Found in the M6 T4 review (2026-09-29), carry into T5/T6 (Result panel, tour):
+
+- TraceStore rules that look up "the latest event about call X" (`findLast` by `tool_call_id`) are not scoped to the latest `tools` stage, while `running` is. After a resume from `interrupted`, a pre-crash `retry` event is still "latest about" the re-run call, so text built on it ("waits ... again") is stale until the first new attempt. Guard: only trust it when `running.last` is set (an attempt since the latest start).
+- Each new line in the Now panel eats the stacked layout's fixed `max-height: 8rem` (112 px at 14 px rem): heading 27 + activity 26 + one mono NOW line 19 + last choice 23 + padding 22 = 116 px, so the last line hides under the fold once a NOW line shows (two lines at ~1100 px wide). Re-add the arithmetic whenever T5 or T6 add rows.
+- Launching headless Chrome with the sandbox disabled was refused by the permission classifier in this session; fall back to CSS arithmetic and ask the tester or builder to measure.

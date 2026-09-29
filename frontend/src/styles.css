@@ -292,14 +292,14 @@ main {
 
 /* Who is working stays in view while the page scrolls; focus scrolls below it, not under it. */
 html {
-  scroll-padding-top: 8rem;
+  scroll-padding-top: 9.5rem;
 }
 
 .now {
   position: sticky;
   top: 0;
   z-index: 1;
-  max-height: 8rem; /* matches the scroll padding above; long arguments scroll inside */
+  max-height: 9.5rem; /* matches the scroll padding above; long arguments scroll inside */
   overflow: auto;
 }
 
@@ -344,7 +344,7 @@ html {
   .console {
     height: 100%;
     grid-template-columns: minmax(13rem, 17%) minmax(0, 1fr) minmax(16rem, 21%);
-    grid-template-rows: minmax(0, 1fr) minmax(9rem, 25%);
+    grid-template-rows: minmax(0, 1fr) minmax(9rem, 22%);
     gap: 8px;
   }
   .console > *,
@@ -392,6 +392,16 @@ html {
   }
   .flow {
     max-height: 14rem;
+  }
+  /* The legend sits beside the Flow heading, so the timeline keeps the height. */
+  .console .flow-panel {
+    position: relative;
+  }
+  .console .flow-panel .legend {
+    position: absolute;
+    top: 10px;
+    right: 12px;
+    margin: 0;
   }
 }
 
@@ -494,6 +504,14 @@ details[open] {
   word-break: break-word;
 }
 
+/* Arguments take one line in the timeline; the detail panel shows all of them. */
+.timeline .item > code,
+.timeline .item.call > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .item.call {
   margin-left: 16px;
   width: calc(100% - 16px);
@@ -536,6 +554,43 @@ meter {
 .now p {
   margin: 0;
   font-size: 13px;
+}
+
+/* Who is working: the actor's badge, filled in its colour, then what it does. */
+.now .activity {
+  margin-bottom: 4px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.actor {
+  margin-right: 6px;
+  padding: 1px 8px;
+  font-size: 12px;
+  vertical-align: 1px;
+}
+
+.actor .dot {
+  animation: blink 1s ease-in-out infinite alternate;
+}
+
+@keyframes blink {
+  to {
+    opacity: 0.25;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .actor .dot {
+    animation: none;
+  }
+}
+
+.now .now-line,
+.now .last-choice {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .flow {

@@ -5,7 +5,16 @@ import { ApprovalInbox } from './approval-inbox';
 import { FlowDiagram } from './flow-diagram';
 import { Follow } from './follow';
 import { RunForm } from './run-form';
-import { TraceStore, attentionStyle, eventText, resultText, roleOf, runStatusStyle } from './trace';
+import {
+  Activity,
+  ProposedCall,
+  TraceStore,
+  attentionStyle,
+  eventText,
+  resultText,
+  roleOf,
+  runStatusStyle,
+} from './trace';
 
 export const REFRESH_MS = 5000; // runs list, open run summary and pending approvals
 export const EVAL_POLL_MS = 3000; // `/trace` reads after `done`, for the evaluation badges
@@ -53,6 +62,35 @@ export class RunsPage {
     if (!this.live()) return this.detail()!.status; // no call runs on an interrupted run
     const attempt = now.attempt ? ` attempt ${now.attempt}` : ''; // a pending approval has no attempt yet
     return `NOW ${now.tool}(${this.compact(now.args)})${attempt} · ${now.text}`;
+  });
+
+  /** Who is working now: nobody without an open run, or once nothing will run on its own. */
+  readonly activity = computed<Activity>(() => {
+    if (!this.runId()) {
+      return {
+        actor: 'none',
+        text: 'No run open. Start one on the left or pick one from the list.',
+      };
+    }
+    const activity = this.store().activity();
+    // Interrupted, or final before its `done` event arrives: the events still show someone at work.
+    if (!this.live() && activity.actor !== 'none') {
+      return { actor: 'none', text: `${this.detail()!.status}: nothing runs now` };
+    }
+    return activity;
+  });
+
+  protected readonly actorWord = { llm: 'LLM', harness: 'Harness', person: 'Person', none: '' };
+
+  /** The LLM's latest decision, in one line. */
+  readonly lastChoice = computed(() => {
+    const reply = this.store().lastReply();
+    if (!reply) return '';
+    if (reply.status === 'malformed')
+      return `Last LLM reply was malformed: ${reply.data?.reason ?? ''}`;
+    if (reply.status === 'final') return 'Last LLM choice: the final answer';
+    const calls = (reply.data?.tool_calls ?? []) as ProposedCall[];
+    return `Last LLM choice: ${calls.map((c) => `${c.name}(${this.compact(c.args)})`).join(', ')}`;
   });
 
   /** Steps, tool calls and seconds used against the run's limits. */
