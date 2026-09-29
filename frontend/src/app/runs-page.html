@@ -41,21 +41,62 @@
   </div>
 
   <div class="center stack">
-    <section class="panel now" aria-live="polite" aria-labelledby="now">
-      <h2 id="now">Now</h2>
-      <p class="activity" aria-atomic="true">
-        @if (activity().actor !== 'none') {
-          <span [class]="'actor tag role-' + activity().actor"
-            ><span class="dot" aria-hidden="true">●</span> {{ actorWord[activity().actor] }}</span
-          >
+    <section
+      class="panel now"
+      [class.result]="result()"
+      [attr.data-bar]="result()?.style?.colour ?? null"
+      aria-live="polite"
+      aria-labelledby="now"
+    >
+      <h2 id="now">{{ result() ? 'Result' : 'Now' }}</h2>
+      @if (result(); as r) {
+        <p class="result-status">
+          @if (r.style) {
+            <span [class]="r.style.colour"
+              ><span aria-hidden="true">{{ r.style.icon }}</span> {{ r.status }}</span
+            >
+          } @else {
+            <span>{{ r.status }}</span>
+          }
+          <span class="muted"> · {{ r.counts }}</span>
+        </p>
+        @if (r.error) {
+          <p class="result-error">{{ r.error }}</p>
         }
-        <span [class.muted]="activity().actor === 'none'">{{ activity().text }}</span>
-      </p>
-      @if (live() && store().now().tool) {
-        <p class="mono now-line" [title]="nowText()">{{ nowText() }}</p>
-      }
-      @if (lastChoice(); as choice) {
-        <p class="last-choice" [title]="choice">{{ choice }}</p>
+        @for (incident of r.incidents; track incident) {
+          <p class="green"><span aria-hidden="true">✔</span> {{ incident }}</p>
+        }
+        @if (r.badges.length) {
+          <p>
+            @for (badge of r.badges; track badge.seq) {
+              <span
+                [class]="'badge ' + (attentionStyle(badge)?.colour ?? '')"
+                [title]="badge.data?.error ?? ''"
+              >
+                @if (attentionStyle(badge); as style) {
+                  <span aria-hidden="true">{{ style.icon }}</span> {{ style.word }}
+                }
+                {{ badgeText(badge) }}
+              </span>
+            }
+          </p>
+        }
+        <p class="answer">{{ r.answer }}</p>
+      } @else {
+        <p class="activity" aria-atomic="true">
+          @if (activity().actor !== 'none') {
+            <span [class]="'actor tag role-' + activity().actor"
+              ><span class="dot" aria-hidden="true">●</span> {{ actorWord[activity().actor] }}</span
+            >
+          }
+          <span [class.muted]="activity().actor === 'none'">{{ activity().text }}</span>
+        </p>
+        @if (live() && store().now().tool) {
+          <p class="mono now-line" [title]="nowText()">{{ nowText() }}</p>
+        }
+        @if (lastChoice(); as choice) {
+          <p class="last-choice" [title]="choice">{{ choice }}</p>
+        }
       }
     </section>
     <section class="panel flow-panel" aria-labelledby="flow">

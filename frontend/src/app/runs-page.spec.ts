@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { ApprovalInbox } from './approval-inbox';
-import { RunsPage } from './runs-page';
+import { ERROR_TEXT, RunsPage } from './runs-page';
 import { TraceEvent } from './api';
 
 /** jsdom has no EventSource: a fake that records what the code does with it (mirrors api.spec.ts). */
@@ -573,17 +573,20 @@ describe('RunsPage', () => {
       );
     });
 
-    it("shows the done message, with no actor, once a final run's done event arrived", async () => {
+    it("shows the Result, with no actor, once a final run's done event arrived", async () => {
       stubFetch({ detail: () => ({ id: 'r1', status: 'completed', options: { limits: {} } }) });
       const fixture = TestBed.createComponent(RunsPage);
       await fixture.whenStable();
       fixture.componentInstance.open('r1');
       await fixture.whenStable();
-      FakeEventSource.all.at(-1)!.send(ev('done', { status: 'completed', msg: 'run completed' }));
+      FakeEventSource.all
+        .at(-1)!
+        .send(ev('done', { status: 'completed', attention: 'success', msg: 'run completed' }));
       await fixture.whenStable();
       const now = (fixture.nativeElement as HTMLElement).querySelector('#now')!.parentElement!;
       expect(now.querySelector('.actor')).toBeNull();
-      expect(now.querySelector('.activity')?.textContent?.trim()).toBe('run completed');
+      expect(now.querySelector('#now')?.textContent).toBe('Result');
+      expect(now.querySelector('.result-status')?.textContent).toContain('✔ completed');
     });
 
     it('shows no actor for an interrupted run, and says the final answer was the last choice', async () => {
@@ -601,6 +604,130 @@ describe('RunsPage', () => {
       expect(now.textContent).toContain('interrupted: nothing runs now');
       expect(now.querySelector('.last-choice')?.textContent).toBe(
         'Last LLM choice: the final answer',
+      );
+    });
+  });
+
+  describe('result', () => {
+    async function finish(detail: Record<string, unknown>, events: TraceEvent[]) {
+      const current = { id: 'r1', status: 'running', final: null, options: { limits: {} } };
+      stubFetch({ detail: () => current });
+      const fixture = TestBed.createComponent(RunsPage);
+      await fixture.whenStable();
+      fixture.componentInstance.open('r1');
+      await fixture.whenStable();
+      const source = FakeEventSource.all.at(-1)!;
+      events.forEach((event) => source.send(event));
+      await fixture.whenStable();
+      const now = (fixture.nativeElement as HTMLElement).querySelector('#now')!.parentElement!;
+      const before = now.querySelector('.answer')?.textContent?.trim();
+      Object.assign(current, detail); // the page reads the detail again on done
+      await fixture.componentInstance.refresh();
+      await fixture.whenStable();
+      return { now, before };
+    }
+
+    it('shows a completed run with its answer, its incident and its counts', async () => {
+      const { now, before } = await finish(
+        { status: 'completed', final: 'payments-api is degraded.\nIncident INC-26F42A3B opened.' },
+        [
+          ev('stage', { node: 'guard', data: { steps: 2, tool_calls: 1 } }),
+          ev('llm', {
+            node: 'agent',
+            status: 'tool_calls',
+            data: { tool_calls: [{ id: 'c9', name: 'create_incident', args: {} }] },
+          }),
+          ev('tool', {
+            node: 'tools',
+            tool: 'create_incident',
+            status: 'ok',
+            data: {
+              tool_call_id: 'c9',
+              attempt: 1,
+              result: { ok: true, data: { incident_id: 'INC-26F42A3B', status: 'open' } },
+            },
+          }),
+          ev('done', {
+            status: 'completed',
+            attention: 'success',
+            data: { status: 'completed', error: null, steps: 3, tool_calls: 2 },
+          }),
+          ev('eval', {
+            attention: 'success',
+            data: { target: 'answer', metric: 'faithfulness', value: 0.91 },
+          }),
+        ],
+      );
+      expect(before).toBe('…'); // the detail was not final yet
+      expect(now.querySelector('#now')?.textContent).toBe('Result');
+      const status = now.querySelector('.result-status span')!;
+      expect([status.textContent?.trim(), status.className]).toEqual(['✔ completed', 'green']);
+      expect(now.getAttribute('data-bar')).toBe('green');
+      expect(now.querySelector('.result-status')?.textContent).toContain('3 steps · 2 tool calls');
+      expect(now.querySelector('.result-error')).toBeNull();
+      expect(now.querySelector('.answer')?.textContent).toBe(
+        'payments-api is degraded.\nIncident INC-26F42A3B opened.',
+      );
+      expect(now.textContent).toContain('Incident INC-26F42A3B open');
+      expect(now.querySelector('.badge')?.textContent).toContain('faithfulness 0.91');
+      expect(now.querySelector('.actor')).toBeNull();
+      expect(now.textContent).not.toContain('NOW');
+    });
+
+    it('names no incident for a create_incident call that did not succeed', async () => {
+      const { now } = await finish({ status: 'completed', final: 'Rejected.' }, [
+        ev('llm', {
+          node: 'agent',
+          status: 'tool_calls',
+          data: { tool_calls: [{ id: 'c8', name: 'create_incident', args: {} }] },
+        }),
+        ev('tool', {
+          node: 'tools',
+          tool: 'create_incident',
+          status: 'error',
+          data: {
+            tool_call_id: 'c8',
+            attempt: 1,
+            result: { ok: false, error: { code: 'rejected', message: 'no' } },
+          },
+        }),
+        ev('done', { status: 'completed', attention: 'success', data: { status: 'completed' } }),
+      ]);
+      expect(now.querySelector('#now')?.textContent).toBe('Result');
+      expect(now.textContent).not.toContain('Incident');
+    });
+
+    it('explains a limit in words and says there is no final answer', async () => {
+      const { now } = await finish({ status: 'limit_exceeded', final: null }, [
+        ev('done', { status: 'limit_exceeded', attention: 'error', data: { error: 'max_steps' } }),
+      ]);
+      const status = now.querySelector('.result-status span')!;
+      expect([status.textContent?.trim(), status.className]).toEqual(['✖ limit_exceeded', 'red']);
+      expect(now.getAttribute('data-bar')).toBe('red');
+      expect(now.querySelector('.result-error')?.textContent).toBe(ERROR_TEXT['max_steps']);
+      expect(now.querySelector('.answer')?.textContent).toBe('No final answer.');
+    });
+
+    it('shows a cancelled run in blue, and an unknown error code as it is', async () => {
+      const { now } = await finish({ status: 'cancelled', final: null }, [
+        ev('done', { status: 'cancelled', attention: 'info', data: { error: 'something_new' } }),
+      ]);
+      const status = now.querySelector('.result-status span')!;
+      expect([status.textContent?.trim(), status.className]).toEqual(['ℹ cancelled', 'blue']);
+      expect(now.querySelector('.result-error')?.textContent).toBe('something_new');
+    });
+
+    it('has a sentence for every error code in DESIGN §3', () => {
+      expect(Object.keys(ERROR_TEXT).sort()).toEqual(
+        [
+          'internal_error',
+          'llm_unavailable',
+          'malformed_reply',
+          'max_run_seconds',
+          'max_steps',
+          'max_tool_calls',
+          'recursion_limit',
+        ].sort(),
       );
     });
   });

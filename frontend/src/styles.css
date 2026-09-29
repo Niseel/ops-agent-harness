@@ -189,6 +189,11 @@ pre {
   background: color-mix(in srgb, var(--bar) 4%, var(--panel)); /* light: amber keeps 4.5:1 on it */
 }
 
+/* A panel with a bar, for example the Result panel; beats the panel's own border. */
+.panel[data-bar] {
+  border-left: 4px solid var(--bar);
+}
+
 /* Approvals wait for a person: amber bar and heading. */
 .panel.waiting {
   border-left: 4px solid var(--amber);
@@ -584,6 +589,33 @@ meter {
   .actor .dot {
     animation: none;
   }
+}
+
+/* Result: the run's end, then its answer in a larger font. */
+.now .result-status {
+  margin-bottom: 4px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.now .result-error {
+  margin-bottom: 4px;
+}
+
+/* The status, error, incident and badges stay in view; a long answer scrolls on its own. */
+.now.result {
+  display: flex;
+  flex-direction: column;
+}
+
+.now .answer {
+  flex: 1 1 auto;
+  min-height: 3em; /* at least two lines stay visible; the panel scrolls for the rest */
+  overflow: auto;
+  margin: 4px 0 0;
+  font-size: 15px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .now .now-line,

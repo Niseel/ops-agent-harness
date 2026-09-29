@@ -7,6 +7,7 @@ import { Follow } from './follow';
 import { RunForm } from './run-form';
 import {
   Activity,
+  CallItem,
   ProposedCall,
   TraceStore,
   attentionStyle,
@@ -19,6 +20,19 @@ import {
 export const REFRESH_MS = 5000; // runs list, open run summary and pending approvals
 export const EVAL_POLL_MS = 3000; // `/trace` reads after `done`, for the evaluation badges
 export const EVAL_POLL_READS = 40; // 2 min
+
+/** A run's error code in words (DESIGN §3, Cause). */
+export const ERROR_TEXT: Record<string, string> = {
+  max_steps: 'The run used all its steps (max_steps).',
+  max_tool_calls: 'A call was blocked: the tool-call limit (max_tool_calls) was reached.',
+  recursion_limit: "The graph's recursion limit stopped the run (a backstop).",
+  llm_unavailable: 'The LLM did not answer after all attempts, or refused the call.',
+  malformed_reply: 'The LLM sent more malformed replies in a row than max_repairs allows.',
+  internal_error: 'An unexpected error stopped the run; the details are in the API log.',
+  max_run_seconds: 'The run took longer than max_run_seconds.',
+};
+
+const FINAL = new Set(['completed', 'failed', 'limit_exceeded', 'timed_out', 'cancelled']);
 
 /**
  * The Runs tab: new run form and runs list (left); Now panel, flow and timeline (center); approvals, budget and
@@ -91,6 +105,30 @@ export class RunsPage {
     if (reply.status === 'final') return 'Last LLM choice: the final answer';
     const calls = (reply.data?.tool_calls ?? []) as ProposedCall[];
     return `Last LLM choice: ${calls.map((c) => `${c.name}(${this.compact(c.args)})`).join(', ')}`;
+  });
+
+  /** Once the `done` event is in, the Now panel becomes the Result panel. */
+  readonly result = computed(() => {
+    const timeline = this.store().timeline();
+    const last = timeline.at(-1);
+    if (last?.type !== 'done') return null;
+    const done = last.event;
+    const error: string | null = done.data?.error ?? null;
+    const detail = this.detail();
+    const used = this.store().used();
+    return {
+      status: done.status ?? '',
+      style: attentionStyle(done),
+      error: error ? (ERROR_TEXT[error] ?? error) : '',
+      // The detail is read again on `done`; until it is final, its answer is not in yet.
+      answer: detail && FINAL.has(detail.status) ? (detail.final ?? 'No final answer.') : '…',
+      incidents: timeline
+        .filter((i): i is CallItem => i.type === 'call')
+        .filter((call) => call.tool === 'create_incident' && call.status === 'ok')
+        .map((call) => `Incident ${resultText(call.result)}`),
+      counts: `${used.steps} steps · ${used.toolCalls} tool calls`,
+      badges: last.badges,
+    };
   });
 
   /** Steps, tool calls and seconds used against the run's limits. */
