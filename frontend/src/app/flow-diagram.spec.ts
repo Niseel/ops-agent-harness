@@ -99,6 +99,35 @@ describe('FlowDiagram', () => {
     expect(active).toEqual(['get_service_status']);
   });
 
+  it("gives each node its role's class and names the roles in a legend", async () => {
+    const root = await render({}, 'agent');
+    const role = (id: string) =>
+      root
+        .querySelector(`g[data-node="${id}"]`)
+        ?.getAttribute('class')
+        ?.match(/role-(\w+)/)?.[1];
+    expect(FLOW.nodes.map((n) => [n.id, role(n.id)])).toEqual(
+      FLOW.nodes.map((n) => [n.id, n.role]),
+    );
+    expect(['agent', 'guard', 'approval', 'kb.rrf'].map(role)).toEqual([
+      'llm',
+      'harness',
+      'person',
+      'tool',
+    ]);
+    expect(root.querySelector('g[data-node="agent"]')?.classList.contains('active')).toBe(true);
+    const legend = [...root.querySelectorAll('.legend span')].map((s) => [
+      s.textContent?.trim(),
+      s.className,
+    ]);
+    expect(legend).toEqual([
+      ['LLM', 'role-llm'],
+      ['Harness', 'role-harness'],
+      ['Tool', 'role-tool'],
+      ['Person', 'role-person'],
+    ]);
+  });
+
   it('shows the icon, status and colour of a node with attention', async () => {
     const failed = event({ status: 'timeout', attention: 'error' });
     const root = await render(

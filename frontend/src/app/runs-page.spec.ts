@@ -590,6 +590,150 @@ describe('RunsPage', () => {
     });
   });
 
+  describe('colours', () => {
+    it("shows each run's status with colour, icon and word, and a running run in the harness colour", async () => {
+      const run = (id: string, status: string) => ({
+        id,
+        status,
+        objective: 'check payments-api',
+        created_at: '2026-09-29T09:00:00.000Z',
+      });
+      stubFetch({
+        runs: [
+          run('r1aaaaaa', 'completed'),
+          run('r2bbbbbb', 'limit_exceeded'),
+          run('r3cccccc', 'running'),
+        ],
+      });
+      const fixture = TestBed.createComponent(RunsPage);
+      await fixture.whenStable();
+      const rows = [...(fixture.nativeElement as HTMLElement).querySelectorAll('.run-row')];
+      const status = (row: Element) => row.querySelector('.status')!;
+      expect(status(rows[0]).classList.contains('green')).toBe(true);
+      expect(status(rows[0]).textContent?.trim()).toBe('✔ completed');
+      expect(status(rows[1]).classList.contains('red')).toBe(true);
+      expect(status(rows[1]).textContent?.trim()).toBe('✖ limit_exceeded');
+      expect(status(rows[2]).classList.contains('role-harness')).toBe(true);
+      expect(status(rows[2]).textContent?.trim()).toBe('● running');
+      expect(status(rows[2]).querySelector('[aria-hidden="true"]')?.textContent).toBe('●');
+    });
+
+    it('marks the Approvals panel while approvals wait', async () => {
+      const approval = {
+        id: 'ap1',
+        run_id: 'r2abcdef',
+        tool: 'create_incident',
+        args: {},
+        status: 'pending',
+        expires_at: '2999-01-01T00:00:00.000Z',
+      };
+      let approvals = [approval];
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async (url: string) =>
+          jsonResponse(url === '/api/approvals?status=pending' ? approvals : []),
+        ),
+      );
+      const fixture = TestBed.createComponent(RunsPage);
+      await fixture.whenStable();
+      const panel = (fixture.nativeElement as HTMLElement)
+        .querySelector('#approvals')!
+        .closest('section')!;
+      expect(panel.classList.contains('waiting')).toBe(true);
+      expect(panel.textContent).toContain('Approvals (1)');
+      approvals = [];
+      await fixture.componentInstance.refresh();
+      await fixture.whenStable();
+      expect(panel.classList.contains('waiting')).toBe(false);
+    });
+
+    it('starts an LLM timeline item with the tag LLM and colours the console kind by role', async () => {
+      stubFetch({ detail: () => ({ id: 'r1', status: 'running', options: { limits: {} } }) });
+      const fixture = TestBed.createComponent(RunsPage);
+      await fixture.whenStable();
+      fixture.componentInstance.open('r1');
+      await fixture.whenStable();
+      const source = FakeEventSource.all.at(-1)!;
+      source.send(
+        ev('llm', { node: 'agent', msg: 'LLM attempt 1: final', data: { tool_calls: [] } }),
+      );
+      source.send(ev('tool', { node: 'tools', tool: 'get_service_status', status: 'ok' }));
+      await fixture.whenStable();
+
+      const root = fixture.nativeElement as HTMLElement;
+      const item = root.querySelector('.timeline li .item')!;
+      expect(item.getAttribute('data-bar')).toBe('llm');
+      const tag = item.querySelector('.tag')!;
+      expect([tag.textContent, tag.className]).toEqual(['LLM', 'tag role-llm']);
+      expect(item.textContent?.trim().startsWith('LLM')).toBe(true);
+      const kinds = [...root.querySelectorAll('.console-lines li .line span:nth-child(2)')];
+      expect(kinds.map((k) => [k.textContent, k.className])).toEqual([
+        ['llm', 'role-llm'],
+        ['tool', 'role-tool'],
+      ]);
+    });
+  });
+
+  describe('bars', () => {
+    it('gives call, done and attention items a bar in their colour', async () => {
+      stubFetch({ detail: () => ({ id: 'r1', status: 'running', options: { limits: {} } }) });
+      const fixture = TestBed.createComponent(RunsPage);
+      await fixture.whenStable();
+      fixture.componentInstance.open('r1');
+      await fixture.whenStable();
+      const source = FakeEventSource.all.at(-1)!;
+      source.send(
+        ev('llm', {
+          node: 'agent',
+          data: { tool_calls: [{ id: 'c1', name: 'get_service_status', args: {} }] },
+        }),
+      );
+      source.send(
+        ev('retry', {
+          node: 'tools',
+          tool: 'get_service_status',
+          attention: 'warn',
+          status: 'retry',
+        }),
+      );
+      source.send(
+        ev('tool', {
+          node: 'tools',
+          tool: 'get_service_status',
+          status: 'ok',
+          data: { tool_call_id: 'c1', attempt: 2, result: { ok: true, data: {} } },
+        }),
+      );
+      source.send(ev('done', { status: 'completed', attention: 'success' }));
+      await fixture.whenStable();
+
+      const root = fixture.nativeElement as HTMLElement;
+      const call = root.querySelector('.timeline .item.call')!;
+      expect(call.getAttribute('data-bar')).toBe('tool');
+      expect(call.querySelector('strong')?.className).toBe('role-tool');
+      expect(root.querySelector('.timeline .item.done')?.getAttribute('data-bar')).toBe('green');
+      const rows = [...root.querySelectorAll('.attention .item')];
+      expect(
+        rows.map((row) => [row.classList.contains('tint'), row.getAttribute('data-bar')]),
+      ).toEqual([
+        [true, 'green'],
+        [true, 'amber'],
+      ]);
+    });
+
+    it('gives a done item without attention the harness bar', async () => {
+      stubFetch({ detail: () => ({ id: 'r1', status: 'completed', options: { limits: {} } }) });
+      const fixture = TestBed.createComponent(RunsPage);
+      await fixture.whenStable();
+      fixture.componentInstance.open('r1');
+      await fixture.whenStable();
+      FakeEventSource.all.at(-1)!.send(ev('done', { status: 'completed' }));
+      await fixture.whenStable();
+      const done = (fixture.nativeElement as HTMLElement).querySelector('.timeline .item.done')!;
+      expect(done.getAttribute('data-bar')).toBe('harness');
+    });
+  });
+
   describe('budget meters', () => {
     it('shows a meter with used and max for steps, tool calls and seconds', async () => {
       stubFetch({
@@ -614,6 +758,12 @@ describe('RunsPage', () => {
       expect(root.textContent).toContain('tool calls 2 / 5');
       expect(meters[0].getAttribute('max')).toBe('10');
       expect(meters[0].getAttribute('value')).toBe('3');
+      // The browser colours a meter near its limit: low at half, high at four fifths, and none is optimum.
+      expect(['low', 'high', 'optimum'].map((a) => meters[0].getAttribute(a))).toEqual([
+        '5',
+        '8',
+        '0',
+      ]);
     });
 
     it('shows no meter when the run detail has no limits', async () => {

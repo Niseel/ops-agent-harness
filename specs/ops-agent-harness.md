@@ -300,11 +300,12 @@ Every state-changing call (create run, decide, resume, cancel, start evaluation)
 
 A run console, not a chat ([0015](../docs/adr/0015-ui-run-console-not-chat.md), [0016](../docs/adr/0016-ui-angular.md)). Angular, served by FastAPI in production. Tabs: Runs, Evaluation, Incidents.
 
-- Left: new run form (objective, LLM mode, fault switches, limits, evaluate) and the runs list.
+- Left: new run form (objective, LLM mode, fault switches, limits, evaluate) and the runs list, each run with its status in colour, icon and word.
 - Center, from the top: the Now panel with the NOW bar (running tool, arguments, attempt), the flow diagram with one node per tool and knowledge-base sub-steps, and the run timeline with each LLM decision and each tool call (name, arguments, attempts, result, duration, evaluation badges).
 - Right: approval inbox for all runs (TTL countdown; approve, edit, reject with reason), budget meters (steps, tool calls, time), attention list.
 - Bottom: console with filters (All, Tools, Attention) and the detail panel with the real data of a step.
 - From 1200×640 CSS pixels up the Runs tab fits the window: the page does not scroll, each panel scrolls inside, and the timeline and the console keep the newest step in view unless the user scrolled back. In smaller windows the panels stack, the page scrolls and the Now panel stays at the top.
+- Colours: one per actor (LLM, harness, tool, person) on the flow, the timeline and the console, next to the attention colours below. Every text colour has a contrast of at least 4.5:1 in the light and the dark theme.
 - Attention is shown with colour, icon and text, never colour alone.
 
 ### Configuration
@@ -377,9 +378,10 @@ Each AC names how it is proved. Unit and API tests run with `ScriptedLLM` or `Fa
   - a pending approval appears in the inbox and can be approved, edited or rejected from there;
   - retries, failures, limits and `sparse_only` search are highlighted with colour, icon and text, as in the attention table above;
   - with the fake LLM each reply takes 300–500 ms (`llm.fake_delay_ms`), so a person can follow the run; a cancel during that wait still ends the run `cancelled`;
-  - from 1280×720 CSS pixels up the Runs tab fits the window: the page does not scroll, panels scroll inside, and the timeline and the console keep the newest step in view.
+  - from 1280×720 CSS pixels up the Runs tab fits the window: the page does not scroll, panels scroll inside, and the timeline and the console keep the newest step in view;
+  - the LLM, the harness, the tools and the person have one colour each, and every text colour keeps a contrast of at least 4.5:1 in the light and the dark theme.
 
-  Proved by frontend unit tests of the event store (event → node state, NOW bar, attention), backend tests of the fake LLM's wait, and the manual steps in `docs/REVIEW_GUIDE.md`.
+  Proved by frontend unit tests of the event store (event → node state, NOW bar, attention), backend tests of the fake LLM's wait, a colour-contrast test, and the manual steps in `docs/REVIEW_GUIDE.md`.
 - **AC-14** (R16) Given the knowledge base is indexed:
   - when a query contains an exact term that appears in only one runbook (such as an error code), then that runbook is in the top 3 with `ranks.bm25 <= 3`;
   - when a query paraphrases a runbook with no shared keywords, then that runbook is in the top 3 with `ranks.dense <= 3` (a `live` test with a real embedding model);

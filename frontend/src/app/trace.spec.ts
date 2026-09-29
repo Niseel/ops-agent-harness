@@ -1,6 +1,14 @@
 import fixture from './trace.fixture.json';
 import { TraceEvent } from './api';
-import { TraceStore, attentionStyle, eventText, nodeOf, resultText } from './trace';
+import {
+  TraceStore,
+  attentionStyle,
+  eventText,
+  nodeOf,
+  resultText,
+  roleOf,
+  runStatusStyle,
+} from './trace';
 
 let seq = 0;
 
@@ -421,6 +429,61 @@ describe('attentionStyle', () => {
 
   it('gives nothing without attention', () => {
     expect(attentionStyle({ kind: 'tool', attention: null })).toBeNull();
+  });
+});
+
+describe('runStatusStyle', () => {
+  const rows: [string, string, string][] = [
+    ['completed', 'green', '✔'],
+    ['failed', 'red', '✖'],
+    ['limit_exceeded', 'red', '✖'],
+    ['timed_out', 'red', '✖'],
+    ['cancelled', 'blue', 'ℹ'],
+    ['awaiting_approval', 'amber', '⚠'],
+    ['interrupted', 'amber', '⚠'],
+  ];
+
+  it.each(rows)('%s is %s with an icon and its own word', (status, colour, icon) => {
+    expect(runStatusStyle(status)).toEqual({ colour, icon, word: status });
+  });
+
+  it('gives nothing while the run is running', () => {
+    expect(runStatusStyle('running')).toBeNull();
+  });
+});
+
+describe('roleOf', () => {
+  it("gives the flow role of the event's node, and the harness for events without a node", () => {
+    const roles = [
+      ev('llm'),
+      ev('stage', { node: 'agent' }),
+      ev('stage', { node: 'guard' }),
+      ev('stage', { node: 'tools' }),
+      ev('tool', { tool: 'get_service_status' }),
+      ev('stage', { node: 'kb.bm25', tool: 'search_knowledge_base' }),
+      ev('retry', { node: 'tools', tool: 'get_service_status' }),
+      ev('retry', { node: 'agent' }),
+      ev('approval', { tool: 'create_incident' }),
+      ev('done'),
+      ev('log'),
+      ev('eval'),
+      ev('error'),
+    ].map(roleOf);
+    expect(roles).toEqual([
+      'llm',
+      'llm',
+      'harness',
+      'harness',
+      'tool',
+      'tool',
+      'tool',
+      'llm',
+      'person',
+      'harness',
+      'harness',
+      'harness',
+      'harness',
+    ]);
   });
 });
 

@@ -3,6 +3,7 @@
 // ponytail: every view is recomputed per event; fine for the hundreds of events a run has.
 import { computed, signal } from '@angular/core';
 import { Envelope, TraceEvent } from './api';
+import { FLOW, Role } from './flow';
 
 export interface ProposedCall {
   id: string;
@@ -101,6 +102,33 @@ export function attentionStyle(
       };
     default:
       return null;
+  }
+}
+
+const ROLES = new Map(FLOW.nodes.map((node) => [node.id, node.role]));
+
+/** Who acts in an event: the role of its flow node, or the harness for events without one (log, eval, error). */
+export function roleOf(event: TraceEvent): Role {
+  const node = nodeOf(event);
+  return (node && ROLES.get(node)) || 'harness';
+}
+
+/** Colour, icon and word for a run's status in the runs list; none while it runs. The word is the status. */
+export function runStatusStyle(status: string): AttentionStyle | null {
+  switch (status) {
+    case 'completed':
+      return { colour: 'green', icon: '✔', word: status };
+    case 'failed':
+    case 'limit_exceeded':
+    case 'timed_out':
+      return { colour: 'red', icon: '✖', word: status };
+    case 'cancelled':
+      return { colour: 'blue', icon: 'ℹ', word: status };
+    case 'awaiting_approval':
+    case 'interrupted':
+      return { colour: 'amber', icon: '⚠', word: status };
+    default:
+      return null; // running
   }
 }
 

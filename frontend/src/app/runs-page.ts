@@ -5,7 +5,7 @@ import { ApprovalInbox } from './approval-inbox';
 import { FlowDiagram } from './flow-diagram';
 import { Follow } from './follow';
 import { RunForm } from './run-form';
-import { TraceStore, attentionStyle, eventText, resultText } from './trace';
+import { TraceStore, attentionStyle, eventText, resultText, roleOf, runStatusStyle } from './trace';
 
 export const REFRESH_MS = 5000; // runs list, open run summary and pending approvals
 export const EVAL_POLL_MS = 3000; // `/trace` reads after `done`, for the evaluation badges
@@ -33,6 +33,8 @@ export class RunsPage {
   protected readonly attentionStyle = attentionStyle;
   protected readonly resultText = resultText;
   protected readonly eventText = eventText;
+  protected readonly roleOf = roleOf;
+  protected readonly runStatusStyle = runStatusStyle;
   protected readonly filters = ['All', 'Tools', 'Attention'] as const;
   readonly filter = signal<'All' | 'Tools' | 'Attention'>('All');
 
